@@ -1,26 +1,26 @@
 using Ardalis.ApiEndpoints;
-using BookStore.Helpers;
 using BookStore.Models.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
-namespace BookStore.Features.Orders;
+namespace BookStore.Endpoints.Orders;
 
-public class GetAllOrders
+public class GetOrderById
     : EndpointBaseAsync
-        .WithRequest<ListRequest>
-        .WithActionResult<PagedResult<GetAllOrders.OrderDto>>
+        .WithRequest<int>
+        .WithActionResult<GetOrderById.OrderDto>
 {
     private readonly AppDbContext _db;
 
-    public GetAllOrders(AppDbContext db) => _db = db;
+    public GetOrderById(AppDbContext db) => _db = db;
 
-    [HttpGet("api/orders")]
-    public override async Task<ActionResult<PagedResult<OrderDto>>> HandleAsync(
-        [FromQuery] ListRequest request,
+    [HttpGet("api/orders/{id:int}")]
+    public override async Task<ActionResult<OrderDto>> HandleAsync(
+        int id,
         CancellationToken ct = default)
     {
-        var query = _db.Orders
-            .OrderByDescending(o => o.Id)
+        var order = await _db.Orders
+            .Where(o => o.Id == id)
             .Select(o => new OrderDto(
                 o.Id,
                 o.UserEmail,
@@ -30,11 +30,15 @@ public class GetAllOrders
                     i.Book!.Title,
                     i.Quantity,
                     i.UnitPrice,
-                    i.UnitPrice * i.Quantity)).ToList()));
+                    i.UnitPrice * i.Quantity)).ToList()))
+            .FirstOrDefaultAsync(ct);
 
-        var result = await query.ToPagedResultAsync(request.Page, request.PageSize, ct);
+        if (order is null)
+        {
+            return NotFound();
+        }
 
-        return Ok(result);
+        return Ok(order);
     }
 
     public record OrderDto(

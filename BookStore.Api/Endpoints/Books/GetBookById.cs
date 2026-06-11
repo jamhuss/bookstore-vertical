@@ -3,7 +3,7 @@ using BookStore.Models.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace BookStore.Features.Books;
+namespace BookStore.Endpoints.Books;
 
 public class GetBookById
     : EndpointBaseAsync

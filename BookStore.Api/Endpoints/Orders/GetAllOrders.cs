@@ -1,26 +1,26 @@
 using Ardalis.ApiEndpoints;
+using BookStore.Helpers;
 using BookStore.Models.Data;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
-namespace BookStore.Features.Orders;
+namespace BookStore.Endpoints.Orders;
 
-public class GetOrderById
+public class GetAllOrders
     : EndpointBaseAsync
-        .WithRequest<int>
-        .WithActionResult<GetOrderById.OrderDto>
+        .WithRequest<ListRequest>
+        .WithActionResult<PagedResult<GetAllOrders.OrderDto>>
 {
     private readonly AppDbContext _db;
 
-    public GetOrderById(AppDbContext db) => _db = db;
+    public GetAllOrders(AppDbContext db) => _db = db;
 
-    [HttpGet("api/orders/{id:int}")]
-    public override async Task<ActionResult<OrderDto>> HandleAsync(
-        int id,
+    [HttpGet("api/orders")]
+    public override async Task<ActionResult<PagedResult<OrderDto>>> HandleAsync(
+        [FromQuery] ListRequest request,
         CancellationToken ct = default)
     {
-        var order = await _db.Orders
-            .Where(o => o.Id == id)
+        var query = _db.Orders
+            .OrderByDescending(o => o.Id)
             .Select(o => new OrderDto(
                 o.Id,
                 o.UserEmail,
@@ -30,27 +30,25 @@ public class GetOrderById
                     i.Book!.Title,
                     i.Quantity,
                     i.UnitPrice,
-                    i.UnitPrice * i.Quantity)).ToList()))
-            .FirstOrDefaultAsync(ct);
+                    i.UnitPrice * i.Quantity)).ToList()));
 
-        if (order is null)
-        {
-            return NotFound();
-        }
+        var result = await query.ToPagedResultAsync(request.Page, request.PageSize, ct);
 
-        return Ok(order);
+        return Ok(result);
     }
 
     public record OrderDto(
         int Id,
         string UserEmail,
         decimal TotalPrice,
-        List<OrderItemDto> Items);
+        List<OrderItemDto> Items
+    );
 
     public record OrderItemDto(
         int BookId,
         string Title,
         int Quantity,
         decimal UnitPrice,
-        decimal LineTotal);
+        decimal LineTotal
+    );
 }

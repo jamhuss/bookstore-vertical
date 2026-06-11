@@ -3,33 +3,30 @@ using BookStore.Models.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace BookStore.Features.Orders;
+namespace BookStore.Endpoints.Books;
 
-public class DeleteOrder
+public class DeleteBook
     : EndpointBaseAsync
         .WithRequest<int>
         .WithActionResult
 {
     private readonly AppDbContext _db;
 
-    public DeleteOrder(AppDbContext db) => _db = db;
+    public DeleteBook(AppDbContext db) => _db = db;
 
-    [HttpDelete("api/orders/{id:int}")]
+    [HttpDelete("api/books/{id:int}")]
     public override async Task<ActionResult> HandleAsync(
         int id,
         CancellationToken ct = default)
     {
-        var order = await _db.Orders
-            .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Id == id, ct);
+        var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == id, ct);
 
-        if (order is null)
+        if (book is null)
         {
             return NotFound();
         }
 
-        _db.OrderItems.RemoveRange(order.Items);
-        _db.Orders.Remove(order);
+        _db.Books.Remove(book);
         await _db.SaveChangesAsync(ct);
 
         return NoContent();

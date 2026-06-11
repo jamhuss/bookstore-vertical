@@ -5,25 +5,25 @@ using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace BookStore.Features.Orders;
+namespace BookStore.Endpoints.Orders;
 
-public class UpdateOrder
+public class CreateOrder
     : EndpointBaseAsync
-        .WithRequest<UpdateOrder.UpdateOrderRequest>
-        .WithActionResult<UpdateOrder.OrderDto>
+        .WithRequest<CreateOrder.CreateOrderRequest>
+        .WithActionResult<CreateOrder.OrderDto>
 {
     private readonly AppDbContext _db;
-    private readonly IValidator<UpdateOrderRequest> _validator;
+    private readonly IValidator<CreateOrderRequest> _validator;
 
-    public UpdateOrder(AppDbContext db, IValidator<UpdateOrderRequest> validator)
+    public CreateOrder(AppDbContext db, IValidator<CreateOrderRequest> validator)
     {
         _db = db;
         _validator = validator;
     }
 
-    [HttpPut("api/orders/{id:int}")]
+    [HttpPost("api/orders")]
     public override async Task<ActionResult<OrderDto>> HandleAsync(
-        [FromBody] UpdateOrderRequest request,
+        [FromBody] CreateOrderRequest request,
         CancellationToken ct = default)
     {
         var validation = await _validator.ValidateAsync(request, ct);
@@ -33,39 +33,32 @@ public class UpdateOrder
             return ValidationProblem(ModelState);
         }
 
-        var order = await _db.Orders
-            .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Id == request.Id, ct);
-
-        if (order is null)
-        {
-            return NotFound();
-        }
-
         var bookIds = request.Items.Select(i => i.BookId).Distinct().ToList();
 
         var books = await _db.Books
             .Where(b => bookIds.Contains(b.Id))
             .ToDictionaryAsync(b => b.Id, ct);
 
-        var missing = bookIds.Where(bid => !books.ContainsKey(bid)).ToList();
+        var missing = bookIds.Where(id => !books.ContainsKey(id)).ToList();
         if (missing.Count > 0)
         {
             return BadRequest($"The following book ids do not exist: {string.Join(", ", missing)}.");
         }
 
-        _db.OrderItems.RemoveRange(order.Items);
-
-        order.UserEmail = request.UserEmail;
-        order.Items = request.Items.Select(i => new OrderItem
+        var order = new Order
         {
-            OrderId = order.Id,
-            BookId = i.BookId,
-            Quantity = i.Quantity,
-            UnitPrice = books[i.BookId].Price
-        }).ToList();
+            UserEmail = request.UserEmail,
+            Items = request.Items.Select(i => new OrderItem
+            {
+                BookId = i.BookId,
+                Quantity = i.Quantity,
+                UnitPrice = books[i.BookId].Price
+            }).ToList()
+        };
+
         order.TotalPrice = order.Items.Sum(i => i.UnitPrice * i.Quantity);
 
+        _db.Orders.Add(order);
         await _db.SaveChangesAsync(ct);
 
         var dto = new OrderDto(
@@ -79,15 +72,14 @@ public class UpdateOrder
                 i.UnitPrice,
                 i.UnitPrice * i.Quantity)).ToList());
 
-        return Ok(dto);
+        return Created($"api/orders/{order.Id}", dto);
     }
 
-    public record UpdateOrderRequest(
-        int Id,
+    public record CreateOrderRequest(
         string UserEmail,
-        List<UpdateOrderItem> Items);
+        List<CreateOrderItem> Items);
 
-    public record UpdateOrderItem(
+    public record CreateOrderItem(
         int BookId,
         int Quantity);
 
@@ -104,7 +96,7 @@ public class UpdateOrder
         decimal UnitPrice,
         decimal LineTotal);
 
-    public class Validator : AbstractValidator<UpdateOrderRequest>
+    public class Validator : AbstractValidator<CreateOrderRequest>
     {
         public Validator()
         {

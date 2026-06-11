@@ -4,7 +4,7 @@ using BookStore.Models.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace BookStore.Features.Orders;
+namespace BookStore.Endpoints.Orders;
 
 /// <summary>
 /// Demonstrates the FromMultiSource helper: the request record is bound from BOTH

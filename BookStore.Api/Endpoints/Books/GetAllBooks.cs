@@ -3,7 +3,7 @@ using BookStore.Helpers;
 using BookStore.Models.Data;
 using Microsoft.AspNetCore.Mvc;
 
-namespace BookStore.Features.Books;
+namespace BookStore.Endpoints.Books;
 
 public class GetAllBooks
     : EndpointBaseAsync
