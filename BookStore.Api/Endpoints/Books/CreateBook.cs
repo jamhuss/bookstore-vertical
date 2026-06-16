@@ -67,7 +67,7 @@ public class CreateBook
         }
     }
 }
-public record CreateBookRequest
+public class CreateBookRequest
 {
     public string Title { get; set; } = string.Empty;
     public string Author { get; set; } = string.Empty;
@@ -75,7 +75,7 @@ public record CreateBookRequest
     public string? Description { get; set; }
     public decimal Price { get; set; } = 0;
 }
-public record CreateBookResponse : CreateBookRequest
+public class CreateBookResponse : CreateBookRequest
 {
     public int Id { get; set; }
 }
