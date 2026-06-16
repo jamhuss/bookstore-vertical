@@ -21,20 +21,18 @@ public class GetAllOrders
     {
         var query = _db.Orders
             .OrderByDescending(o => o.Id)
-            .Select(o => new GetAllOrdersResponse
-            {
-                Id = o.Id,
-                UserEmail = o.UserEmail,
-                TotalPrice = o.TotalPrice,
-                Items = o.Items.Select(i => new OrderItemDto
-                {
-                    BookId = i.BookId,
-                    Title = i.Book!.Title,
-                    Quantity = i.Quantity,
-                    UnitPrice = i.UnitPrice,
-                    LineTotal = i.UnitPrice * i.Quantity
-                }).ToList()
-            });
+            .Select(o => new GetAllOrdersResponse(
+                o.Id,
+                o.UserEmail,
+                o.TotalPrice,
+                o.Items.Select(i => new GetAllOrdersResponseItem(
+                    i.BookId,
+                    i.Book.Title,
+                    i.Quantity,
+                    i.UnitPrice,
+                    i.LineTotal
+                )).ToList()
+            ));
 
         var result = await query.ToPagedResultAsync(request.Page, request.PageSize, ct);
 
@@ -42,19 +40,18 @@ public class GetAllOrders
     }
 }
 
-public class GetAllOrdersResponse
-{
-    public int Id { get; set; }
-    public string UserEmail { get; set; } = string.Empty;
-    public decimal TotalPrice { get; set; } = 0;
-    public List<OrderItemDto> Items { get; set; } = new();
-}
+public record GetAllOrdersResponse(
+    int Id,
+    string UserEmail,
+    decimal TotalPrice,
+    List<GetAllOrdersResponseItem> Items
+);
 
-public class OrderItemDto
-{
-    public int BookId { get; set; }
-    public string Title { get; set; } = string.Empty;
-    public int Quantity { get; set; } = 0;
-    public decimal UnitPrice { get; set; } = 0;
-    public decimal LineTotal { get; set; } = 0;
-}
+public record GetAllOrdersResponseItem(
+    int BookId,
+    string Title,
+    int Quantity,
+    decimal UnitPrice,
+    decimal LineTotal
+);
+
