@@ -8,27 +8,28 @@ namespace BookStore.Endpoints.Books;
 public class GetBookById
     : EndpointBaseAsync
         .WithRequest<int>
-        .WithActionResult<GetBookById.BookDto>
+        .WithActionResult<GetBookByIdResponse>
 {
     private readonly AppDbContext _db;
 
     public GetBookById(AppDbContext db) => _db = db;
 
     [HttpGet("api/books/{id:int}")]
-    public override async Task<ActionResult<BookDto>> HandleAsync(
+    public override async Task<ActionResult<GetBookByIdResponse>> HandleAsync(
         int id,
         CancellationToken ct = default)
     {
         var book = await _db.Books
             .Where(b => b.Id == id)
-            .Select(b => new BookDto(
+            .Select(b => new GetBookByIdResponse
+            (
                 b.Id,
                 b.Title,
                 b.Author,
                 b.Genre,
                 b.Description,
-                b.Price))
-            .FirstOrDefaultAsync(ct);
+                b.Price
+            )).FirstOrDefaultAsync(ct);
 
         if (book is null)
         {
@@ -37,12 +38,13 @@ public class GetBookById
 
         return Ok(book);
     }
-
-    public record BookDto(
-        int Id,
-        string Title,
-        string Author,
-        string Genre,
-        string Description,
-        decimal Price);
 }
+
+public record GetBookByIdResponse(
+    int Id,
+    string Title,
+    string Author,
+    string Genre,
+    string Description,
+    decimal Price
+);

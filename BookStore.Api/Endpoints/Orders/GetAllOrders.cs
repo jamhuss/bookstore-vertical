@@ -8,47 +8,53 @@ namespace BookStore.Endpoints.Orders;
 public class GetAllOrders
     : EndpointBaseAsync
         .WithRequest<ListRequest>
-        .WithActionResult<PagedResult<GetAllOrders.OrderDto>>
+        .WithActionResult<PagedResult<GetAllOrdersResponse>>
 {
     private readonly AppDbContext _db;
 
     public GetAllOrders(AppDbContext db) => _db = db;
 
     [HttpGet("api/orders")]
-    public override async Task<ActionResult<PagedResult<OrderDto>>> HandleAsync(
+    public override async Task<ActionResult<PagedResult<GetAllOrdersResponse>>> HandleAsync(
         [FromQuery] ListRequest request,
         CancellationToken ct = default)
     {
         var query = _db.Orders
             .OrderByDescending(o => o.Id)
-            .Select(o => new OrderDto(
-                o.Id,
-                o.UserEmail,
-                o.TotalPrice,
-                o.Items.Select(i => new OrderItemDto(
-                    i.BookId,
-                    i.Book!.Title,
-                    i.Quantity,
-                    i.UnitPrice,
-                    i.UnitPrice * i.Quantity)).ToList()));
+            .Select(o => new GetAllOrdersResponse
+            {
+                Id = o.Id,
+                UserEmail = o.UserEmail,
+                TotalPrice = o.TotalPrice,
+                Items = o.Items.Select(i => new OrderItemDto
+                {
+                    BookId = i.BookId,
+                    Title = i.Book!.Title,
+                    Quantity = i.Quantity,
+                    UnitPrice = i.UnitPrice,
+                    LineTotal = i.UnitPrice * i.Quantity
+                }).ToList()
+            });
 
         var result = await query.ToPagedResultAsync(request.Page, request.PageSize, ct);
 
         return Ok(result);
     }
+}
 
-    public record OrderDto(
-        int Id,
-        string UserEmail,
-        decimal TotalPrice,
-        List<OrderItemDto> Items
-    );
+public class GetAllOrdersResponse
+{
+    public int Id { get; set; }
+    public string UserEmail { get; set; } = string.Empty;
+    public decimal TotalPrice { get; set; } = 0;
+    public List<OrderItemDto> Items { get; set; } = new();
+}
 
-    public record OrderItemDto(
-        int BookId,
-        string Title,
-        int Quantity,
-        decimal UnitPrice,
-        decimal LineTotal
-    );
+public class OrderItemDto
+{
+    public int BookId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public int Quantity { get; set; } = 0;
+    public decimal UnitPrice { get; set; } = 0;
+    public decimal LineTotal { get; set; } = 0;
 }

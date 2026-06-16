@@ -9,8 +9,8 @@ namespace BookStore.Endpoints.Orders;
 
 public class CreateOrder
     : EndpointBaseAsync
-        .WithRequest<CreateOrder.CreateOrderRequest>
-        .WithActionResult<CreateOrder.OrderDto>
+        .WithRequest<CreateOrderRequest>
+        .WithActionResult<CreateOrderResponse>
 {
     private readonly AppDbContext _db;
     private readonly IValidator<CreateOrderRequest> _validator;
@@ -22,7 +22,7 @@ public class CreateOrder
     }
 
     [HttpPost("api/orders")]
-    public override async Task<ActionResult<OrderDto>> HandleAsync(
+    public override async Task<ActionResult<CreateOrderResponse>> HandleAsync(
         [FromBody] CreateOrderRequest request,
         CancellationToken ct = default)
     {
@@ -61,11 +61,11 @@ public class CreateOrder
         _db.Orders.Add(order);
         await _db.SaveChangesAsync(ct);
 
-        var dto = new OrderDto(
+        var dto = new CreateOrderResponse(
             order.Id,
             order.UserEmail,
             order.TotalPrice,
-            order.Items.Select(i => new OrderItemDto(
+            order.Items.Select(i => new CreateOrderResponseItem(
                 i.BookId,
                 books[i.BookId].Title,
                 i.Quantity,
@@ -74,27 +74,6 @@ public class CreateOrder
 
         return Created($"api/orders/{order.Id}", dto);
     }
-
-    public record CreateOrderRequest(
-        string UserEmail,
-        List<CreateOrderItem> Items);
-
-    public record CreateOrderItem(
-        int BookId,
-        int Quantity);
-
-    public record OrderDto(
-        int Id,
-        string UserEmail,
-        decimal TotalPrice,
-        List<OrderItemDto> Items);
-
-    public record OrderItemDto(
-        int BookId,
-        string Title,
-        int Quantity,
-        decimal UnitPrice,
-        decimal LineTotal);
 
     public class Validator : AbstractValidator<CreateOrderRequest>
     {
@@ -108,3 +87,27 @@ public class CreateOrder
         }
     }
 }
+public record CreateOrderRequest(
+    string UserEmail,
+    List<CreateOrderItem> Items
+);
+
+public record CreateOrderItem(
+    int BookId,
+    int Quantity
+);
+
+public record CreateOrderResponse(
+    int Id,
+    string UserEmail,
+    decimal TotalPrice,
+    List<CreateOrderResponseItem> Items
+);
+
+public record CreateOrderResponseItem(
+    int BookId,
+    string Title,
+    int Quantity,
+    decimal UnitPrice,
+    decimal LineTotal
+);

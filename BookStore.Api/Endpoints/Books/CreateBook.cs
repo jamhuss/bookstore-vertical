@@ -8,8 +8,8 @@ namespace BookStore.Endpoints.Books;
 
 public class CreateBook
     : EndpointBaseAsync
-        .WithRequest<CreateBook.CreateBookRequest>
-        .WithActionResult<CreateBook.BookDto>
+        .WithRequest<CreateBookRequest>
+        .WithActionResult<CreateBookResponse>
 {
     private readonly AppDbContext _db;
     private readonly IValidator<CreateBookRequest> _validator;
@@ -21,7 +21,7 @@ public class CreateBook
     }
 
     [HttpPost("api/books")]
-    public override async Task<ActionResult<BookDto>> HandleAsync(
+    public override async Task<ActionResult<CreateBookResponse>> HandleAsync(
         [FromBody] CreateBookRequest request,
         CancellationToken ct = default)
     {
@@ -44,25 +44,18 @@ public class CreateBook
         _db.Books.Add(book);
         await _db.SaveChangesAsync(ct);
 
-        var dto = new BookDto(book.Id, book.Title, book.Author, book.Genre, book.Description, book.Price);
+        var dto = new CreateBookResponse
+        {
+            Id = book.Id,
+            Title = book.Title,
+            Author = book.Author,
+            Genre = book.Genre,
+            Description = book.Description,
+            Price = book.Price
+        };
 
         return Created($"api/books/{book.Id}", dto);
     }
-
-    public record CreateBookRequest(
-        string Title,
-        string Author,
-        string? Genre,
-        string? Description,
-        decimal Price);
-
-    public record BookDto(
-        int Id,
-        string Title,
-        string Author,
-        string Genre,
-        string Description,
-        decimal Price);
 
     public class Validator : AbstractValidator<CreateBookRequest>
     {
@@ -73,4 +66,16 @@ public class CreateBook
             RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
         }
     }
+}
+public record CreateBookRequest
+{
+    public string Title { get; set; } = string.Empty;
+    public string Author { get; set; } = string.Empty;
+    public string? Genre { get; set; }
+    public string? Description { get; set; }
+    public decimal Price { get; set; } = 0;
+}
+public record CreateBookResponse : CreateBookRequest
+{
+    public int Id { get; set; }
 }

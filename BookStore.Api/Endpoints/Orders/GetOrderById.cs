@@ -8,20 +8,20 @@ namespace BookStore.Endpoints.Orders;
 public class GetOrderById
     : EndpointBaseAsync
         .WithRequest<int>
-        .WithActionResult<GetOrderById.OrderDto>
+        .WithActionResult<GetOrderByIdResponse>
 {
     private readonly AppDbContext _db;
 
     public GetOrderById(AppDbContext db) => _db = db;
 
     [HttpGet("api/orders/{id:int}")]
-    public override async Task<ActionResult<OrderDto>> HandleAsync(
+    public override async Task<ActionResult<GetOrderByIdResponse>> HandleAsync(
         int id,
         CancellationToken ct = default)
     {
         var order = await _db.Orders
             .Where(o => o.Id == id)
-            .Select(o => new OrderDto(
+            .Select(o => new GetOrderByIdResponse(
                 o.Id,
                 o.UserEmail,
                 o.TotalPrice,
@@ -40,17 +40,20 @@ public class GetOrderById
 
         return Ok(order);
     }
-
-    public record OrderDto(
-        int Id,
-        string UserEmail,
-        decimal TotalPrice,
-        List<OrderItemDto> Items);
-
-    public record OrderItemDto(
-        int BookId,
-        string Title,
-        int Quantity,
-        decimal UnitPrice,
-        decimal LineTotal);
 }
+public record GetOrderByIdResponse(
+    int Id,
+    string UserEmail,
+    decimal TotalPrice,
+    List<OrderItemDto> Items
+);
+
+public record OrderItemDto(
+    int BookId,
+    string Title,
+    int Quantity,
+    decimal UnitPrice,
+    decimal LineTotal
+);
+
+

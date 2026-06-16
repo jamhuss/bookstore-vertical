@@ -9,8 +9,8 @@ namespace BookStore.Endpoints.Books;
 
 public class UpdateBook
     : EndpointBaseAsync
-        .WithRequest<UpdateBook.UpdateBookRequest>
-        .WithActionResult<UpdateBook.BookDto>
+        .WithRequest<UpdateBookRequest>
+        .WithActionResult<UpdateBookResponse>
 {
     private readonly AppDbContext _db;
     private readonly IValidator<UpdateBookRequest> _validator;
@@ -22,7 +22,7 @@ public class UpdateBook
     }
 
     [HttpPut("api/books/{id:int}")]
-    public override async Task<ActionResult<BookDto>> HandleAsync(
+    public override async Task<ActionResult<UpdateBookResponse>> HandleAsync(
         [FromBody] UpdateBookRequest request,
         CancellationToken ct = default)
     {
@@ -48,26 +48,18 @@ public class UpdateBook
 
         await _db.SaveChangesAsync(ct);
 
-        var dto = new BookDto(book.Id, book.Title, book.Author, book.Genre, book.Description, book.Price);
+        var dto = new UpdateBookResponse
+        {
+            Id = book.Id,
+            Title = book.Title,
+            Author = book.Author,
+            Genre = book.Genre,
+            Description = book.Description,
+            Price = book.Price
+        };
 
         return Ok(dto);
     }
-
-    public record UpdateBookRequest(
-        int Id,
-        string Title,
-        string Author,
-        string? Genre,
-        string? Description,
-        decimal Price);
-
-    public record BookDto(
-        int Id,
-        string Title,
-        string Author,
-        string Genre,
-        string Description,
-        decimal Price);
 
     public class Validator : AbstractValidator<UpdateBookRequest>
     {
@@ -79,3 +71,15 @@ public class UpdateBook
         }
     }
 }
+
+public class UpdateBookRequest
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Author { get; set; } = string.Empty;
+    public string? Genre { get; set; }
+    public string? Description { get; set; }
+    public decimal Price { get; set; } = 0;
+}
+
+public class UpdateBookResponse : UpdateBookRequest { }
