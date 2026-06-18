@@ -1,43 +1,25 @@
-using Ardalis.ApiEndpoints;
-using BookStore.Helpers;
 using BookStore.Models.Data;
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace BookStore.Endpoints.Books;
 
-public class UpdateBook
-    : EndpointBaseAsync
-        .WithRequest<UpdateBookRequest>
-        .WithActionResult<UpdateBookResponse>
+[HttpPut("api/books/{id:int}")]
+[AllowAnonymous]
+public class UpdateBook : Endpoint<UpdateBookRequest, UpdateBookResponse>
 {
     private readonly AppDbContext _db;
-    private readonly IValidator<UpdateBookRequest> _validator;
 
-    public UpdateBook(AppDbContext db, IValidator<UpdateBookRequest> validator)
+    public UpdateBook(AppDbContext db) => _db = db;
+
+    public override async Task HandleAsync(UpdateBookRequest request, CancellationToken ct = default)
     {
-        _db = db;
-        _validator = validator;
-    }
-
-    [HttpPut("api/books/{id:int}")]
-    public override async Task<ActionResult<UpdateBookResponse>> HandleAsync(
-        [FromBody] UpdateBookRequest request,
-        CancellationToken ct = default)
-    {
-        var validation = await _validator.ValidateAsync(request, ct);
-        if (!validation.IsValid)
-        {
-            validation.AddToModelState(ModelState);
-            return ValidationProblem(ModelState);
-        }
-
         var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == request.Id, ct);
 
         if (book is null)
         {
-            return NotFound();
+            await Send.NotFoundAsync(cancellation: ct);
+            return;
         }
 
         book.Title = request.Title;
@@ -58,17 +40,7 @@ public class UpdateBook
             Price = book.Price
         };
 
-        return Ok(dto);
-    }
-
-    public class Validator : AbstractValidator<UpdateBookRequest>
-    {
-        public Validator()
-        {
-            RuleFor(x => x.Title).NotEmpty();
-            RuleFor(x => x.Author).NotEmpty();
-            RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
-        }
+        await Send.OkAsync(dto, cancellation: ct);
     }
 }
 
@@ -83,3 +55,13 @@ public class UpdateBookRequest
 }
 
 public class UpdateBookResponse : UpdateBookRequest { }
+
+public class UpdateBookValidator : Validator<UpdateBookRequest>
+{
+    public UpdateBookValidator()
+    {
+        RuleFor(x => x.Title).NotEmpty();
+        RuleFor(x => x.Author).NotEmpty();
+        RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
+    }
+}

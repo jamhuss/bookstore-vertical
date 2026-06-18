@@ -1,29 +1,19 @@
-using Ardalis.ApiEndpoints;
-using BookStore.Helpers;
 using BookStore.Models.Data;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace BookStore.Endpoints.Orders;
 
-/// <summary>
-/// Demonstrates the FromMultiSource helper: the request record is bound from BOTH
-/// the route (OrderId) and the query string (BookId, Quantity) at the same time,
-/// working around the Ardalis "single request object" limitation.
-/// </summary>
+[HttpPost("api/orders/{OrderId:int}/books")]
+[AllowAnonymous]
 public class AddBookToOrder
-    : EndpointBaseAsync
-        .WithRequest<AddBookToOrder.AddBookRequest>
-        .WithActionResult<AddBookToOrder.OrderDto>
+    : Endpoint<AddBookToOrder.AddBookRequest, AddBookToOrder.OrderDto>
 {
     private readonly AppDbContext _db;
 
     public AddBookToOrder(AppDbContext db) => _db = db;
 
-    [HttpPost("api/orders/{OrderId:int}/books")]
-    public override async Task<ActionResult<OrderDto>> HandleAsync(
-        [FromMultiSource] AddBookRequest request,
-        CancellationToken ct = default)
+    public override async Task HandleAsync(AddBookRequest request, CancellationToken ct = default)
     {
         var quantity = request.Quantity < 1 ? 1 : request.Quantity;
 
@@ -33,13 +23,15 @@ public class AddBookToOrder
 
         if (order is null)
         {
-            return NotFound($"Order {request.OrderId} was not found.");
+            await Send.ResultAsync(Results.NotFound($"Order {request.OrderId} was not found."));
+            return;
         }
 
         var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == request.BookId, ct);
         if (book is null)
         {
-            return BadRequest($"Book {request.BookId} does not exist.");
+            await Send.ResultAsync(Results.BadRequest($"Book {request.BookId} does not exist."));
+            return;
         }
 
         var existing = order.Items.FirstOrDefault(i => i.BookId == request.BookId);
@@ -77,7 +69,7 @@ public class AddBookToOrder
                 i.UnitPrice,
                 i.UnitPrice * i.Quantity)).ToList());
 
-        return Ok(dto);
+        await Send.OkAsync(dto, cancellation: ct);
     }
 
     public record AddBookRequest(int OrderId, int BookId, int Quantity);

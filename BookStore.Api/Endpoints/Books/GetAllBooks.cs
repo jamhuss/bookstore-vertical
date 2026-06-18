@@ -1,23 +1,19 @@
-using Ardalis.ApiEndpoints;
 using BookStore.Helpers;
 using BookStore.Models.Data;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace BookStore.Endpoints.Books;
 
+[HttpGet("api/books")]
+[AllowAnonymous]
 public class GetAllBooks
-    : EndpointBaseAsync
-        .WithRequest<ListRequest>
-        .WithActionResult<PagedResult<GetAllBooksResponseItem>>
+    : Endpoint<ListRequest, PagedResult<GetAllBooksResponseItem>>
 {
     private readonly AppDbContext _db;
 
     public GetAllBooks(AppDbContext db) => _db = db;
 
-    [HttpGet("api/books")]
-    public override async Task<ActionResult<PagedResult<GetAllBooksResponseItem>>> HandleAsync(
-        [FromQuery] ListRequest request,
-        CancellationToken ct = default)
+    public override async Task HandleAsync(ListRequest request, CancellationToken ct = default)
     {
         var query = _db.Books
             .OrderBy(b => b.Title)
@@ -32,7 +28,7 @@ public class GetAllBooks
 
         var result = await query.ToPagedResultAsync(request.Page, request.PageSize, ct);
 
-        return Ok(result);
+        await Send.OkAsync(result, cancellation: ct);
     }
 }
 

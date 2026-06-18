@@ -1,34 +1,38 @@
-using Ardalis.ApiEndpoints;
 using BookStore.Models.Data;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace BookStore.Endpoints.Books;
 
+[HttpDelete("api/books/{id:int}")]
+[AllowAnonymous]
 public class DeleteBook
-    : EndpointBaseAsync
-        .WithRequest<int>
-        .WithActionResult
+    : Endpoint<DeleteBookRequest>
 {
     private readonly AppDbContext _db;
 
     public DeleteBook(AppDbContext db) => _db = db;
 
-    [HttpDelete("api/books/{id:int}")]
-    public override async Task<ActionResult> HandleAsync(
-        int id,
+    
+    public override async Task HandleAsync(
+        DeleteBookRequest request,
         CancellationToken ct = default)
     {
-        var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == id, ct);
+        var book = await _db.Books.FirstOrDefaultAsync(b => b.Id == request.Id, ct);
 
         if (book is null)
         {
-            return NotFound();
+            await Send.NotFoundAsync(cancellation: ct);
+            return;
         }
 
         _db.Books.Remove(book);
         await _db.SaveChangesAsync(ct);
 
-        return NoContent();
+        await Send.NoContentAsync(cancellation: ct);
     }
 }
+public record DeleteBookRequest
+(
+    int Id
+);

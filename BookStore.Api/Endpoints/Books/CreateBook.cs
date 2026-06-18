@@ -1,36 +1,22 @@
-using Ardalis.ApiEndpoints;
-using BookStore.Helpers;
 using BookStore.Models.Data;
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace BookStore.Endpoints.Books;
 
+[HttpPost("api/books")]
+[AllowAnonymous]
 public class CreateBook
-    : EndpointBaseAsync
-        .WithRequest<CreateBookRequest>
-        .WithActionResult<CreateBookResponse>
+    : Endpoint<CreateBookRequest, CreateBookResponse>
 {
     private readonly AppDbContext _db;
-    private readonly IValidator<CreateBookRequest> _validator;
 
-    public CreateBook(AppDbContext db, IValidator<CreateBookRequest> validator)
+    public CreateBook(AppDbContext db)
     {
         _db = db;
-        _validator = validator;
     }
 
-    [HttpPost("api/books")]
-    public override async Task<ActionResult<CreateBookResponse>> HandleAsync(
-        [FromBody] CreateBookRequest request,
-        CancellationToken ct = default)
+    public override async Task HandleAsync(CreateBookRequest request, CancellationToken ct = default)
     {
-        var validation = await _validator.ValidateAsync(request, ct);
-        if (!validation.IsValid)
-        {
-            validation.AddToModelState(ModelState);
-            return ValidationProblem(ModelState);
-        }
 
         var book = new Book
         {
@@ -54,18 +40,10 @@ public class CreateBook
             Price = book.Price
         };
 
-        return Created($"api/books/{book.Id}", dto);
+       await Send.OkAsync(dto, cancellation: ct);
     }
 
-    public class Validator : AbstractValidator<CreateBookRequest>
-    {
-        public Validator()
-        {
-            RuleFor(x => x.Title).NotEmpty();
-            RuleFor(x => x.Author).NotEmpty();
-            RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
-        }
-    }
+    
 }
 public class CreateBookRequest
 {
@@ -78,4 +56,13 @@ public class CreateBookRequest
 public class CreateBookResponse : CreateBookRequest
 {
     public int Id { get; set; }
+}
+public class CreateBookValidator : Validator<CreateBookRequest>
+{
+    public CreateBookValidator()
+    {
+        RuleFor(x => x.Title).NotEmpty();
+        RuleFor(x => x.Author).NotEmpty();
+        RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
+    }
 }

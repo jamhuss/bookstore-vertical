@@ -1,31 +1,27 @@
-using Ardalis.ApiEndpoints;
 using BookStore.Models.Data;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace BookStore.Endpoints.Orders;
 
+[HttpGet("api/orders/{id:int}")]
+[AllowAnonymous]
 public class GetOrderById
-    : EndpointBaseAsync
-        .WithRequest<int>
-        .WithActionResult<GetOrderByIdResponse>
+    : Endpoint<GetOrderByIdRequest, GetOrderByIdResponse>
 {
     private readonly AppDbContext _db;
 
     public GetOrderById(AppDbContext db) => _db = db;
 
-    [HttpGet("api/orders/{id:int}")]
-    public override async Task<ActionResult<GetOrderByIdResponse>> HandleAsync(
-        int id,
-        CancellationToken ct = default)
+    public override async Task HandleAsync(GetOrderByIdRequest request, CancellationToken ct = default)
     {
         var order = await _db.Orders
-            .Where(o => o.Id == id)
+            .Where(o => o.Id == request.Id)
             .Select(o => new GetOrderByIdResponse(
                 o.Id,
                 o.UserEmail,
                 o.TotalPrice,
-                o.Items.Select(i => new OrderItemDto(
+                o.Items.Select(i => new GetOrderByIdResponseItem(
                     i.BookId,
                     i.Book!.Title,
                     i.Quantity,
@@ -35,20 +31,27 @@ public class GetOrderById
 
         if (order is null)
         {
-            return NotFound();
+            await Send.NotFoundAsync(cancellation: ct);
+            return;
         }
 
-        return Ok(order);
+        await Send.OkAsync(order, cancellation: ct);
     }
 }
+
+public class GetOrderByIdRequest
+{
+    public int Id { get; set; }
+}
+
 public record GetOrderByIdResponse(
     int Id,
     string UserEmail,
     decimal TotalPrice,
-    List<OrderItemDto> Items
+    List<GetOrderByIdResponseItem> Items
 );
 
-public record OrderItemDto(
+public record GetOrderByIdResponseItem(
     int BookId,
     string Title,
     int Quantity,

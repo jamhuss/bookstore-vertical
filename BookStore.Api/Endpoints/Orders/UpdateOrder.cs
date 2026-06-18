@@ -1,45 +1,27 @@
-using Ardalis.ApiEndpoints;
-using BookStore.Helpers;
 using BookStore.Models.Data;
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace BookStore.Endpoints.Orders;
 
-public class UpdateOrder
-    : EndpointBaseAsync
-        .WithRequest<UpdateOrder.UpdateOrderRequest>
-        .WithActionResult<UpdateOrder.OrderDto>
+[HttpPut("api/orders/{id:int}")]
+[AllowAnonymous]
+public class UpdateOrder : Endpoint<UpdateOrderRequest, UpdateOrderResponse>
 {
     private readonly AppDbContext _db;
-    private readonly IValidator<UpdateOrderRequest> _validator;
 
-    public UpdateOrder(AppDbContext db, IValidator<UpdateOrderRequest> validator)
+    public UpdateOrder(AppDbContext db) => _db = db;
+
+    public override async Task HandleAsync(UpdateOrderRequest request, CancellationToken ct = default)
     {
-        _db = db;
-        _validator = validator;
-    }
-
-    [HttpPut("api/orders/{id:int}")]
-    public override async Task<ActionResult<OrderDto>> HandleAsync(
-        [FromBody] UpdateOrderRequest request,
-        CancellationToken ct = default)
-    {
-        var validation = await _validator.ValidateAsync(request, ct);
-        if (!validation.IsValid)
-        {
-            validation.AddToModelState(ModelState);
-            return ValidationProblem(ModelState);
-        }
-
         var order = await _db.Orders
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.Id == request.Id, ct);
 
         if (order is null)
         {
-            return NotFound();
+            await Send.NotFoundAsync(cancellation: ct);
+            return;
         }
 
         var bookIds = request.Items.Select(i => i.BookId).Distinct().ToList();
@@ -51,7 +33,8 @@ public class UpdateOrder
         var missing = bookIds.Where(bid => !books.ContainsKey(bid)).ToList();
         if (missing.Count > 0)
         {
-            return BadRequest($"The following book ids do not exist: {string.Join(", ", missing)}.");
+            await Send.ResultAsync(Results.BadRequest($"The following book ids do not exist: {string.Join(", ", missing)}."));
+            return;
         }
 
         _db.OrderItems.RemoveRange(order.Items);
@@ -68,51 +51,51 @@ public class UpdateOrder
 
         await _db.SaveChangesAsync(ct);
 
-        var dto = new OrderDto(
+        var dto = new UpdateOrderResponse(
             order.Id,
             order.UserEmail,
             order.TotalPrice,
-            order.Items.Select(i => new OrderItemDto(
+            order.Items.Select(i => new UpdateOrderResponseItem(
                 i.BookId,
                 books[i.BookId].Title,
                 i.Quantity,
                 i.UnitPrice,
                 i.UnitPrice * i.Quantity)).ToList());
 
-        return Ok(dto);
+        await Send.OkAsync(dto, cancellation: ct);
     }
+}
 
-    public record UpdateOrderRequest(
-        int Id,
-        string UserEmail,
-        List<UpdateOrderItem> Items);
+public record UpdateOrderRequest(
+    int Id,
+    string UserEmail,
+    List<UpdateOrderItem> Items);
 
-    public record UpdateOrderItem(
-        int BookId,
-        int Quantity);
+public record UpdateOrderItem(
+    int BookId,
+    int Quantity);
 
-    public record OrderDto(
-        int Id,
-        string UserEmail,
-        decimal TotalPrice,
-        List<OrderItemDto> Items);
+public record UpdateOrderResponse(
+    int Id,
+    string UserEmail,
+    decimal TotalPrice,
+    List<UpdateOrderResponseItem> Items);
 
-    public record OrderItemDto(
-        int BookId,
-        string Title,
-        int Quantity,
-        decimal UnitPrice,
-        decimal LineTotal);
+public record UpdateOrderResponseItem(
+    int BookId,
+    string Title,
+    int Quantity,
+    decimal UnitPrice,
+    decimal LineTotal);
 
-    public class Validator : AbstractValidator<UpdateOrderRequest>
+public class UpdateOrderValidator : Validator<UpdateOrderRequest>
+{
+    public UpdateOrderValidator()
     {
-        public Validator()
-        {
-            RuleFor(x => x.UserEmail).NotEmpty().EmailAddress();
-            RuleFor(x => x.Items).NotEmpty()
-                .WithMessage("An order must contain at least one item.");
-            RuleForEach(x => x.Items).ChildRules(item =>
-                item.RuleFor(i => i.Quantity).GreaterThanOrEqualTo(1));
-        }
+        RuleFor(x => x.UserEmail).NotEmpty().EmailAddress();
+        RuleFor(x => x.Items).NotEmpty()
+            .WithMessage("An order must contain at least one item.");
+        RuleForEach(x => x.Items).ChildRules(item =>
+            item.RuleFor(i => i.Quantity).GreaterThanOrEqualTo(1));
     }
 }

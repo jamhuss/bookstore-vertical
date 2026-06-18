@@ -1,7 +1,7 @@
 # BookStore — Vertical Slice Architecture Demo
 
 A small, **self-contained** full-stack demo that illustrates the **Vertical Slice / single-file
-endpoint** approach (built on [Ardalis.ApiEndpoints](https://github.com/ardalis/ApiEndpoints))
+endpoint** approach (built on [FastEndpoints](https://fast-endpoints.com/))
 in ASP.NET Core, paired with a React client.
 
 The goal is to show how a feature can live in **one file** — its route, request/response DTOs,
@@ -15,7 +15,7 @@ immediately without any database setup.
 
 | Project | Stack | Purpose |
 |---|---|---|
-| `BookStore.Api` | .NET 10, ASP.NET Core, EF Core In-Memory, FluentValidation, Scalar | REST API organised by vertical slices |
+| `BookStore.Api` | .NET 10, ASP.NET Core, FastEndpoints, EF Core In-Memory, FluentValidation, Swagger | REST API organised by vertical slices |
 | `bookstore.client` | React 19, Vite, TypeScript, axios | UI for managing books and orders |
 
 ### Domain
@@ -33,7 +33,7 @@ restart**.
 ## Architecture: vertical slices
 
 Instead of layering by *technical concern* (Controllers / Services / Repositories), the API is
-organised by *feature*. Each use case is one class in its own file under `Features/`:
+organised by *feature*. Each use case is one class in its own file under `Endpoints/`:
 
 ```mermaid
 flowchart LR
@@ -49,45 +49,61 @@ flowchart LR
     end
 ```
 
-A typical slice (`Features/Books/CreateBook.cs`) contains everything for that endpoint:
+A typical slice (`Endpoints/Books/CreateBook.cs`) contains everything for that endpoint. The
+route is declared with an attribute on the class, request/response DTOs and the FluentValidation
+validator live in the same file, and FastEndpoints discovers and wires them all automatically:
 
 ```csharp
-public class CreateBook
-    : EndpointBaseAsync.WithRequest<CreateBook.CreateBookRequest>.WithActionResult<CreateBook.BookDto>
+[HttpPost("api/books")]
+[AllowAnonymous]
+public class CreateBook : Endpoint<CreateBookRequest, CreateBookResponse>
 {
     private readonly AppDbContext _db;
-    private readonly IValidator<CreateBookRequest> _validator;
 
-    [HttpPost("api/books")]
-    public override async Task<ActionResult<BookDto>> HandleAsync(
-        [FromBody] CreateBookRequest request, CancellationToken ct = default) { /* ... */ }
+    public CreateBook(AppDbContext db) => _db = db;
 
-    // Request + response DTOs live in the SAME file, as records:
-    public record CreateBookRequest(string Title, string Author, string? Genre, string? Description, decimal Price);
-    public record BookDto(int Id, string Title, string Author, string Genre, string Description, decimal Price);
-
-    // FluentValidation validator also lives in the slice:
-    public class Validator : AbstractValidator<CreateBookRequest> { /* ... */ }
+    public override async Task HandleAsync(CreateBookRequest request, CancellationToken ct = default)
+    {
+        // ... build the book, save, then:
+        await Send.OkAsync(dto, cancellation: ct);
+    }
 }
+
+// Request + response DTOs live in the SAME file:
+public class CreateBookRequest { public string Title { get; set; } = ""; /* ... */ }
+public class CreateBookResponse : CreateBookRequest { public int Id { get; set; } }
+
+// FluentValidation validator also lives in the slice and is auto-registered:
+public class CreateBookValidator : Validator<CreateBookRequest> { /* ... */ }
 ```
 
 **Why this layout?** Adding or changing a feature is a *local* change to one file. There are no
 shared service/repository abstractions to ripple through — only genuinely shared helpers live
 outside the slices (in `Helpers/`).
 
-### The `[FromMultiSource]` helper
+### Validation
 
-Ardalis endpoints take a **single** request object, but sometimes you need to bind from the route
-**and** the query string at once. `Helpers/ArdalisHelpers.cs` defines a `[FromMultiSource]`
-attribute that composes multiple binding sources. See `Features/Orders/AddBookToOrder.cs`:
+FastEndpoints discovers every `Validator<TRequest>` in the assembly and runs it **before**
+`HandleAsync` is called. If validation fails, the request is short-circuited with a `400` and a
+problem-details payload automatically — there is no manual `ValidateAsync` call or `IValidator<T>`
+injection in the handlers.
+
+### Composite binding
+
+FastEndpoints binds a **single** request object from multiple sources at once. In
+`Endpoints/Orders/AddBookToOrder.cs`, `OrderId` comes from the route template while `BookId` and
+`Quantity` are bound from the request body — no custom binding attribute required:
 
 ```csharp
 [HttpPost("api/orders/{OrderId:int}/books")]
-public override async Task<ActionResult<OrderDto>> HandleAsync(
-    [FromMultiSource] AddBookRequest request, CancellationToken ct = default) { /* ... */ }
+[AllowAnonymous]
+public class AddBookToOrder : Endpoint<AddBookToOrder.AddBookRequest, AddBookToOrder.OrderDto>
+{
+    public override async Task HandleAsync(AddBookRequest request, CancellationToken ct = default) { /* ... */ }
 
-// OrderId comes from the path, BookId + Quantity from the query string:
-public record AddBookRequest(int OrderId, int BookId, int Quantity);
+    // OrderId comes from the path, BookId + Quantity from the body:
+    public record AddBookRequest(int OrderId, int BookId, int Quantity);
+}
 ```
 
 ---
@@ -106,10 +122,10 @@ public record AddBookRequest(int OrderId, int BookId, int Quantity);
 | POST | `/api/orders` | `CreateOrder` |
 | PUT | `/api/orders/{id}` | `UpdateOrder` |
 | DELETE | `/api/orders/{id}` | `DeleteOrder` |
-| POST | `/api/orders/{orderId}/books?bookId=&quantity=` | `AddBookToOrder` (`[FromMultiSource]`) |
+| POST | `/api/orders/{orderId}/books` | `AddBookToOrder` (composite route + body binding) |
 
-Interactive docs (Scalar) are available in Development at **`/scalar/v1`**, reading the OpenAPI
-document at `/openapi/v1.json`.
+Interactive docs (Swagger UI) are available in Development at **`/swagger`**, reading the OpenAPI
+document generated by FastEndpoints.
 
 ---
 
@@ -120,15 +136,15 @@ northwind-vertical/
 ├─ BookStore.slnx                     # Solution (API + client)
 │
 ├─ BookStore.Api/                     # ── ASP.NET Core API ──
-│  ├─ Program.cs                      # DI, EF In-Memory, CORS, Scalar, startup seed
+│  ├─ Program.cs                      # DI, EF In-Memory, CORS, FastEndpoints, Swagger, startup seed
 │  ├─ BookStore.Api.csproj
 │  ├─ BookStore.Api.http              # Manual request examples
 │  │
-│  ├─ Features/                       # One folder per entity, one file per use case
+│  ├─ Endpoints/                      # One folder per entity, one file per use case
 │  │  ├─ Books/
 │  │  │  ├─ GetAllBooks.cs            # paged list
 │  │  │  ├─ GetBookById.cs
-│  │  │  ├─ CreateBook.cs             # + nested FluentValidation validator
+│  │  │  ├─ CreateBook.cs             # + FluentValidation validator (auto-registered)
 │  │  │  ├─ UpdateBook.cs
 │  │  │  └─ DeleteBook.cs
 │  │  └─ Orders/
@@ -137,12 +153,11 @@ northwind-vertical/
 │  │     ├─ CreateOrder.cs            # looks up prices, freezes UnitPrice, computes total
 │  │     ├─ UpdateOrder.cs
 │  │     ├─ DeleteOrder.cs
-│  │     └─ AddBookToOrder.cs         # demonstrates [FromMultiSource]
+│  │     └─ AddBookToOrder.cs         # composite route + body binding
 │  │
 │  ├─ Helpers/                        # Genuinely shared cross-slice code
 │  │  ├─ Paging.cs                    # ListRequest, PagedResult<T>, ToPagedResultAsync
-│  │  ├─ ArdalisHelpers.cs            # [FromMultiSource] binding attribute
-│  │  └─ ValidationExtensions.cs      # FluentValidation → ModelState mapping
+│  │  └─ globalusings.cs              # global usings (FastEndpoints, FluentValidation)
 │  │
 │  ├─ Models/Data/                    # Entities + EF context
 │  │  ├─ Book.cs
@@ -151,7 +166,7 @@ northwind-vertical/
 │  │  ├─ AppDbContext.cs
 │  │  └─ DbSeeder.cs                  # idempotent seed (8 books, 2 orders)
 │  │
-│  └─ Properties/launchSettings.json  # http://localhost:5212, auto-opens Scalar
+│  └─ Properties/launchSettings.json  # http://localhost:5212, auto-opens Swagger
 │
 └─ bookstore.client/                  # ── React + Vite client ──
    ├─ vite.config.ts                  # dev server :56789, proxies /api → :5212
@@ -189,13 +204,13 @@ decides *when* a modal is open and *what* it edits:
 You need **two terminals** — the API and the client run side by side. The Vite dev server proxies
 `/api` calls to the API, so no CORS configuration is needed for local development.
 
-**1. API** (opens the Scalar UI automatically):
+**1. API** (opens the Swagger UI automatically):
 
 ```bash
 cd BookStore.Api
 dotnet run
 # → API at http://localhost:5212
-# → Scalar UI at http://localhost:5212/scalar/v1
+# → Swagger UI at http://localhost:5212/swagger
 ```
 
 **2. Client:**
@@ -221,9 +236,13 @@ delete records. Validation errors from the API (FluentValidation) are surfaced i
 
 - **EF Core In-Memory** — no database to install; data lives in process memory and resets on
   restart. Swapping to a real provider is a one-line change in `Program.cs`.
-- **FluentValidation** — validators are registered with
-  `AddValidatorsFromAssemblyContaining<Program>()` and injected as `IValidator<T>`; each one lives
-  inside its slice, so adding validation stays a local change.
-- **Scalar** — modern OpenAPI explorer, only mapped in the Development environment.
+- **FastEndpoints** — each slice is an `Endpoint<TRequest, TResponse>` with its route declared via
+  an `[Http...]` attribute; endpoints are discovered and mapped by `AddFastEndpoints()` /
+  `UseFastEndpoints()`.
+- **FluentValidation** — validators derive from FastEndpoints' `Validator<T>`, are auto-discovered,
+  and run before the handler; each one lives inside its slice, so adding validation stays a local
+  change.
+- **Swagger** — OpenAPI document and Swagger UI are provided by `FastEndpoints.Swagger`, only
+  mapped in the Development environment.
 - **HTTPS redirect** is skipped in Development so the plain-HTTP Vite proxy works without 307
   redirects.

@@ -1,22 +1,20 @@
 using BookStore.Models.Data;
-using FluentValidation;
+using FastEndpoints.Swagger;
 using Microsoft.EntityFrameworkCore;
-using Scalar.AspNetCore;
-
 var builder = WebApplication.CreateBuilder(args);
 
 const string CorsPolicy = "AllowReactClient";
 
-builder.Services.AddControllers();
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
-
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseInMemoryDatabase("BookStore"));
 
-// Register every IValidator<T> in the assembly. Each validator lives in its own
-// feature slice file, so adding validation to a feature is a local change.
-builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+builder.Services
+   .AddFastEndpoints()
+     .SwaggerDocument(o =>
+     {
+         o.AutoTagPathSegmentIndex = 2; // "books", "orders" instead of "api"
+     });
+
 
 builder.Services.AddCors(options =>
 {
@@ -41,21 +39,20 @@ using (var scope = app.Services.CreateScope())
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference(options =>
-        options.WithTitle("BookStore API"));
+   app.UseFastEndpoints()
+    .UseSwaggerGen();
 }
 else
 {
     // Skip HTTPS redirect in Development so the React dev-server proxy can talk
     // to the API over plain HTTP without hitting a 307 redirect.
+    app.UseFastEndpoints();
     app.UseHttpsRedirection();
 }
+
 
 app.UseCors(CorsPolicy);
 
 app.UseAuthorization();
-
-app.MapControllers();
 
 app.Run();

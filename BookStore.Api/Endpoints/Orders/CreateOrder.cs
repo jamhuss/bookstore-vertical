@@ -1,38 +1,22 @@
-using Ardalis.ApiEndpoints;
-using BookStore.Helpers;
 using BookStore.Models.Data;
-using FluentValidation;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+
+using Order = BookStore.Models.Data.Order;
 
 namespace BookStore.Endpoints.Orders;
 
+[HttpPost("api/orders")]
+[AllowAnonymous]
 public class CreateOrder
-    : EndpointBaseAsync
-        .WithRequest<CreateOrderRequest>
-        .WithActionResult<CreateOrderResponse>
+    : Endpoint<CreateOrderRequest, CreateOrderResponse>
 {
     private readonly AppDbContext _db;
-    private readonly IValidator<CreateOrderRequest> _validator;
 
-    public CreateOrder(AppDbContext db, IValidator<CreateOrderRequest> validator)
+    public CreateOrder(AppDbContext db) => _db = db;
+
+    public override async Task HandleAsync(CreateOrderRequest request, CancellationToken ct = default)
     {
-        _db = db;
-        _validator = validator;
-    }
-
-    [HttpPost("api/orders")]
-    public override async Task<ActionResult<CreateOrderResponse>> HandleAsync(
-        [FromBody] CreateOrderRequest request,
-        CancellationToken ct = default)
-    {
-        var validation = await _validator.ValidateAsync(request, ct);
-        if (!validation.IsValid)
-        {
-            validation.AddToModelState(ModelState);
-            return ValidationProblem(ModelState);
-        }
-
         var bookIds = request.Items.Select(i => i.BookId).Distinct().ToList();
 
         var books = await _db.Books
@@ -42,7 +26,8 @@ public class CreateOrder
         var missing = bookIds.Where(id => !books.ContainsKey(id)).ToList();
         if (missing.Count > 0)
         {
-            return BadRequest($"The following book ids do not exist: {string.Join(", ", missing)}.");
+            await Send.ResultAsync(Results.BadRequest($"The following book ids do not exist: {string.Join(", ", missing)}."));
+            return;
         }
 
         var order = new Order
@@ -72,21 +57,22 @@ public class CreateOrder
                 i.UnitPrice,
                 i.UnitPrice * i.Quantity)).ToList());
 
-        return Created($"api/orders/{order.Id}", dto);
-    }
-
-    public class Validator : AbstractValidator<CreateOrderRequest>
-    {
-        public Validator()
-        {
-            RuleFor(x => x.UserEmail).NotEmpty().EmailAddress();
-            RuleFor(x => x.Items).NotEmpty()
-                .WithMessage("An order must contain at least one item.");
-            RuleForEach(x => x.Items).ChildRules(item =>
-                item.RuleFor(i => i.Quantity).GreaterThanOrEqualTo(1));
-        }
+        await Send.CreatedAtAsync<GetOrderById>(new { id = order.Id }, dto, cancellation: ct);
     }
 }
+
+public class CreateOrderValidator : Validator<CreateOrderRequest>
+{
+    public CreateOrderValidator()
+    {
+        RuleFor(x => x.UserEmail).NotEmpty().EmailAddress();
+        RuleFor(x => x.Items).NotEmpty()
+            .WithMessage("An order must contain at least one item.");
+        RuleForEach(x => x.Items).ChildRules(item =>
+            item.RuleFor(i => i.Quantity).GreaterThanOrEqualTo(1));
+    }
+}
+
 public record CreateOrderRequest(
     string UserEmail,
     List<CreateOrderItem> Items

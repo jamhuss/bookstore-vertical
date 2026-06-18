@@ -1,26 +1,22 @@
-using Ardalis.ApiEndpoints;
 using BookStore.Models.Data;
-using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
 namespace BookStore.Endpoints.Books;
 
+[HttpGet("api/books/{id:int}")]
+[AllowAnonymous]
 public class GetBookById
-    : EndpointBaseAsync
-        .WithRequest<int>
-        .WithActionResult<GetBookByIdResponse>
+    : Endpoint<GetBookByIdRequest, GetBookByIdResponse>
 {
     private readonly AppDbContext _db;
 
     public GetBookById(AppDbContext db) => _db = db;
 
-    [HttpGet("api/books/{id:int}")]
-    public override async Task<ActionResult<GetBookByIdResponse>> HandleAsync(
-        int id,
-        CancellationToken ct = default)
+    public override async Task HandleAsync(GetBookByIdRequest request, CancellationToken ct = default)
     {
         var book = await _db.Books
-            .Where(b => b.Id == id)
+            .Where(b => b.Id == request.Id)
             .Select(b => new GetBookByIdResponse
             (
                 b.Id,
@@ -33,11 +29,17 @@ public class GetBookById
 
         if (book is null)
         {
-            return NotFound();
+            await Send.NotFoundAsync(cancellation: ct);
+            return;
         }
 
-        return Ok(book);
+        await Send.OkAsync(book, cancellation: ct);
     }
+}
+
+public class GetBookByIdRequest
+{
+    public int Id { get; set; }
 }
 
 public record GetBookByIdResponse(

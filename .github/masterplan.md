@@ -1,11 +1,8 @@
 # Master Plan: BookStore Vertical Slice API + React Client
 
-> **Status:** Godkänd – alla beslut låsta. Redo för implementation.
-> Demo av vertical architecture / single-file slice-approachen med Ardalis ApiEndpoints.
-
 ## 1. Mål
 
-Ett demoprojekt som illustrerar **vertical-slice / single-file-arkitektur** med Ardalis ApiEndpoints.
+Ett demoprojekt som illustrerar **vertical-slice / single-file-arkitektur** med FastEndpoints.
 
 - **Backend:** .NET 10 Web API + EF Core In-Memory (seedad vid start → klona och kör direkt, ingen DB-installation).
 - **Domän:** BookStore (Books + Orders).
@@ -17,12 +14,13 @@ Ett demoprojekt som illustrerar **vertical-slice / single-file-arkitektur** med 
 | --- | --- |
 | Root-namespace | `BookStore` (justera inklistrad helper `Northwind.Helpers` → `BookStore.Helpers`) |
 | Id-typ | `int` |
-| API-utforskare | `Scalar` (Scalar.AspNetCore) över OpenAPI |
+| API-utforskare | `Swagger` (FastEndpoints.Swagger) över OpenAPI |
 | GetAll-endpoints | Returnerar `PagedResult<T>` (visar delade helpers/klasser) |
 | Order ↔ Book | `OrderItem` med Quantity + fryst UnitPrice; TotalPrice beräknas på servern |
 | Seed-data | Böcker + ordrar, idempotent vid uppstart |
 | Datalagring | EF Core In-Memory (nollställs vid omstart) |
-| Endpoint-stil | Ett Ardalis-endpoint = en fil; Request + Response DTO:er som `record` i samma fil |
+| Endpoint-stil | Ett FastEndpoints-endpoint = en fil; Request + Response DTO:er i samma fil |
+| Validering | FastEndpoints `Validator<T>` (FluentValidation), auto-upptäcks och körs före handlern |
 | Frontend-stack | Vite + React + TypeScript + axios, modal-baserad CRUD |
 
 ## 3. Datamodell
@@ -68,7 +66,7 @@ sequenceDiagram
     participant DB as AppDbContext (In-Memory)
 
     K->>E: POST /api/orders { userEmail, items[] }
-    E->>E: validera (email ifylld, ≥1 item, qty > 0)
+    E->>E: validera (email ifylld, ≥1 item, qty > 0) via Validator<T>
     E->>DB: hämta böcker där Id ∈ items.BookId
     DB-->>E: böcker med priser
     E->>E: verifiera att alla bookId finns (annars 400)
@@ -89,13 +87,13 @@ sequenceDiagram
 
 ```text
 src/BookStore.Api/
-  Features/Books/   GetAllBooks, GetBookById, CreateBook, UpdateBook, DeleteBook   (en fil var)
-  Features/Orders/  GetAllOrders, GetOrderById, CreateOrder, UpdateOrder, DeleteOrder
-  Features/Orders/  AddBookToOrder.cs   (demonstrerar FromMultiSource: orderId path + bookId query)
-  Helpers/ArdalisHelpers.cs  (FromMultiSourceAttribute, namespace BookStore.Helpers)
+  Endpoints/Books/   GetAllBooks, GetBookById, CreateBook, UpdateBook, DeleteBook   (en fil var)
+  Endpoints/Orders/  GetAllOrders, GetOrderById, CreateOrder, UpdateOrder, DeleteOrder
+  Endpoints/Orders/  AddBookToOrder.cs   (komposit bindning: orderId från route + bookId/quantity från body)
   Helpers/Paging.cs          (ListRequest{Page,PageSize}, PagedResult<T>, ToPagedResultAsync)
+  Helpers/globalusings.cs    (global using FastEndpoints, FluentValidation)
   Models/Data/               AppDbContext, Book, Order, OrderItem, DbSeeder
-  Program.cs                 (DI, EF InMemory, CORS, OpenAPI + Scalar, kör seed)
+  Program.cs                 (DI, EF InMemory, CORS, FastEndpoints + Swagger, kör seed)
 client/  (Vite React TS)      Books-sida + Orders-sida, var sin lista + CRUD-modal, axios api-klient
 .http-fil + kort README som speglar approachen
 ```
@@ -104,17 +102,17 @@ client/  (Vite React TS)      Books-sida + Orders-sida, var sin lista + CRUD-mod
 
 ### Fas 1 – Backend-grund
 
-1. Scaffolda solution + `BookStore.Api` (.NET 10). Paket: `Ardalis.ApiEndpoints`, `Microsoft.EntityFrameworkCore.InMemory`, `Microsoft.AspNetCore.OpenApi`, `Scalar.AspNetCore`.
+1. Scaffolda solution + `BookStore.Api` (.NET 10). Paket: `FastEndpoints`, `FastEndpoints.Swagger`, `Microsoft.EntityFrameworkCore.InMemory`.
 2. Modeller (`Book`, `Order`, `OrderItem`) + `AppDbContext` (DbSets) i `Models/Data`.
 3. `Helpers/Paging.cs`: `ListRequest`, `PagedResult<T>`, `ToPagedResultAsync`. *(parallellt med 2)*
-4. `Helpers/ArdalisHelpers.cs`: `FromMultiSourceAttribute` verbatim, namespace `BookStore.Helpers`. *(parallellt med 2)*
+4. `Helpers/globalusings.cs`: globala usings för `FastEndpoints` och `FluentValidation`. *(parallellt med 2)*
 5. `DbSeeder`: 6–8 böcker + 2–3 ordrar, idempotent. *(beror på 2)*
 
 ### Fas 2 – Slices
 
-6. Books-slices (5 filer): egna Request/Response-`record` i samma fil. GetAll returnerar `PagedResult<BookDto>`. *(beror på 2–4)*
-7. Orders-slices (5 filer) + `AddBookToOrder` med `FromMultiSource`. Create/Update slår upp bokpriser, fryser UnitPrice, räknar TotalPrice. *(beror på 2–5)*
-8. `Program.cs`: registrera DbContext (InMemory), CORS för React, OpenAPI + Scalar UI, kör seed vid uppstart.
+6. Books-slices (5 filer): egna Request/Response-typer i samma fil. GetAll returnerar `PagedResult<BookDto>`. *(beror på 2–4)*
+7. Orders-slices (5 filer) + `AddBookToOrder` med komposit route + body-bindning. Create/Update slår upp bokpriser, fryser UnitPrice, räknar TotalPrice. *(beror på 2–5)*
+8. `Program.cs`: registrera DbContext (InMemory), CORS för React, `AddFastEndpoints()` + Swagger, kör seed vid uppstart.
 
 ### Fas 3 – Klient & test
 
@@ -124,34 +122,35 @@ client/  (Vite React TS)      Books-sida + Orders-sida, var sin lista + CRUD-mod
 ## 8. Återanvändbara mönster
 
 - **`Helpers/Paging.cs`** – `PagedResult<T>` + `ToPagedResultAsync` används av alla GetAll-slices (delad klass).
-- **`Helpers/ArdalisHelpers.cs`** – `FromMultiSourceAttribute` (Path + Query) för endpoints som behöver flera bind-källor.
-- Varje slice ärver `EndpointBaseAsync.WithRequest<TReq>.WithActionResult<TRes>`, injicerar `AppDbContext`, har route-attribut på `HandleAsync`.
+- **`Helpers/globalusings.cs`** – globala usings (`FastEndpoints`, `FluentValidation`) så varje slice slipper upprepa dem.
+- Varje slice ärver `Endpoint<TRequest, TResponse>` (eller `Endpoint<TRequest>`), injicerar `AppDbContext`, har route-attribut (`[Http...]`) på klassen och svarar via `Send.*Async`.
 
-## 9. FromMultiSource-helpern
+## 9. Komposit bindning
 
-Löser Ardalis-begränsningen att en endpoint bara tar **ett** request-objekt – slår ihop Path + Query till samma record.
+FastEndpoints binder ett **enda** request-objekt från flera källor samtidigt. I `AddBookToOrder`
+kommer `OrderId` från route-mallen medan `BookId` och `Quantity` binds från request-body – ingen
+egen bindnings-attribut behövs.
 
 ```csharp
-using Microsoft.AspNetCore.Mvc.ModelBinding;
-
-namespace BookStore.Helpers;
-
-public sealed class FromMultiSourceAttribute : Attribute, IBindingSourceMetadata
+[HttpPost("api/orders/{OrderId:int}/books")]
+[AllowAnonymous]
+public class AddBookToOrder : Endpoint<AddBookToOrder.AddBookRequest, AddBookToOrder.OrderDto>
 {
-    public BindingSource BindingSource { get; } = CompositeBindingSource.Create(
-        [BindingSource.Path, BindingSource.Query],
-        nameof(FromMultiSourceAttribute));
+    public override async Task HandleAsync(AddBookRequest request, CancellationToken ct = default) { /* ... */ }
+
+    // OrderId från path, BookId + Quantity från body:
+    public record AddBookRequest(int OrderId, int BookId, int Quantity);
 }
 ```
 
 ## 10. Verifiering
 
-1. `dotnet build` + `dotnet run` → Scalar UI svarar, seed-data syns i `GET /api/books` och `GET /api/orders`.
+1. `dotnet build` + `dotnet run` → Swagger UI svarar, seed-data syns i `GET /api/books` och `GET /api/orders`.
 2. `.http`: skapa bok → `POST /api/orders` med 2 items → bekräfta att TotalPrice = Σ(UnitPrice × Quantity).
-3. `AddBookToOrder` via `POST /api/orders/{id}/books?bookId=..` → bekräfta att `FromMultiSource`-bindningen fungerar.
+3. `AddBookToOrder` via `POST /api/orders/{id}/books` → bekräfta att den kompositta route + body-bindningen fungerar.
 4. `npm run dev` i `client/` → skapa/redigera/radera böcker och ordrar via modaler; paginering syns i listan.
 
 ## 11. Scope-gränser
 
-- **Ingår:** Books CRUD, Orders CRUD, AddBookToOrder, paginering, seed, Scalar, React-klient.
-- **Utelämnas (tills vidare):** auth/identity, persistent DB, FluentValidation, API-versionering, automatiska tester (manuell `.http` + UI).
+- **Ingår:** Books CRUD, Orders CRUD, AddBookToOrder, paginering, seed, Swagger, React-klient.
+- **Utelämnas (tills vidare):** auth/identity, persistent DB, API-versionering, automatiska tester (manuell `.http` + UI).
