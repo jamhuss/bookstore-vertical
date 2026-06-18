@@ -9,7 +9,7 @@ namespace BookStore.Endpoints.Orders;
 [HttpPost("api/orders")]
 [AllowAnonymous]
 public class CreateOrder
-    : Endpoint<CreateOrderRequest, CreateOrderResponse>
+    : Endpoint<CreateOrderRequest, CreateOrderResponse, CreateOrderMapper>
 {
     private readonly AppDbContext _db;
 
@@ -36,6 +36,7 @@ public class CreateOrder
             Items = request.Items.Select(i => new OrderItem
             {
                 BookId = i.BookId,
+                Book = books[i.BookId],
                 Quantity = i.Quantity,
                 UnitPrice = books[i.BookId].Price
             }).ToList()
@@ -46,16 +47,7 @@ public class CreateOrder
         _db.Orders.Add(order);
         await _db.SaveChangesAsync(ct);
 
-        var dto = new CreateOrderResponse(
-            order.Id,
-            order.UserEmail,
-            order.TotalPrice,
-            order.Items.Select(i => new CreateOrderResponseItem(
-                i.BookId,
-                books[i.BookId].Title,
-                i.Quantity,
-                i.UnitPrice,
-                i.UnitPrice * i.Quantity)).ToList());
+        var dto = Map.FromEntity(order);
 
         await Send.CreatedAtAsync<GetOrderById>(new { id = order.Id }, dto, cancellation: ct);
     }
@@ -97,3 +89,17 @@ public record CreateOrderResponseItem(
     decimal UnitPrice,
     decimal LineTotal
 );
+
+public class CreateOrderMapper : Mapper<CreateOrderRequest, CreateOrderResponse, Order>
+{
+    public override CreateOrderResponse FromEntity(Order e) => new(
+        e.Id,
+        e.UserEmail,
+        e.TotalPrice,
+        e.Items.Select(i => new CreateOrderResponseItem(
+            i.BookId,
+            i.Book!.Title,
+            i.Quantity,
+            i.UnitPrice,
+            i.LineTotal)).ToList());
+}

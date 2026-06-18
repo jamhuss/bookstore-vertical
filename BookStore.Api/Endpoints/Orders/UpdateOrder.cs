@@ -2,11 +2,13 @@ using BookStore.Models.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
+using Order = BookStore.Models.Data.Order;
+
 namespace BookStore.Endpoints.Orders;
 
 [HttpPut("api/orders/{id:int}")]
 [AllowAnonymous]
-public class UpdateOrder : Endpoint<UpdateOrderRequest, UpdateOrderResponse>
+public class UpdateOrder : Endpoint<UpdateOrderRequest, UpdateOrderResponse, UpdateOrderMapper>
 {
     private readonly AppDbContext _db;
 
@@ -44,6 +46,7 @@ public class UpdateOrder : Endpoint<UpdateOrderRequest, UpdateOrderResponse>
         {
             OrderId = order.Id,
             BookId = i.BookId,
+            Book = books[i.BookId],
             Quantity = i.Quantity,
             UnitPrice = books[i.BookId].Price
         }).ToList();
@@ -51,16 +54,7 @@ public class UpdateOrder : Endpoint<UpdateOrderRequest, UpdateOrderResponse>
 
         await _db.SaveChangesAsync(ct);
 
-        var dto = new UpdateOrderResponse(
-            order.Id,
-            order.UserEmail,
-            order.TotalPrice,
-            order.Items.Select(i => new UpdateOrderResponseItem(
-                i.BookId,
-                books[i.BookId].Title,
-                i.Quantity,
-                i.UnitPrice,
-                i.UnitPrice * i.Quantity)).ToList());
+        var dto = Map.FromEntity(order);
 
         await Send.OkAsync(dto, cancellation: ct);
     }
@@ -87,6 +81,20 @@ public record UpdateOrderResponseItem(
     int Quantity,
     decimal UnitPrice,
     decimal LineTotal);
+
+public class UpdateOrderMapper : Mapper<UpdateOrderRequest, UpdateOrderResponse, Order>
+{
+    public override UpdateOrderResponse FromEntity(Order e) => new(
+        e.Id,
+        e.UserEmail,
+        e.TotalPrice,
+        e.Items.Select(i => new UpdateOrderResponseItem(
+            i.BookId,
+            i.Book!.Title,
+            i.Quantity,
+            i.UnitPrice,
+            i.LineTotal)).ToList());
+}
 
 public class UpdateOrderValidator : Validator<UpdateOrderRequest>
 {

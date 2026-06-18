@@ -6,7 +6,7 @@ namespace BookStore.Endpoints.Books;
 
 [HttpPut("api/books/{id:int}")]
 [AllowAnonymous]
-public class UpdateBook : Endpoint<UpdateBookRequest, UpdateBookResponse>
+public class UpdateBook : Endpoint<UpdateBookRequest, UpdateBookResponse, UpdateBookMapper>
 {
     private readonly AppDbContext _db;
 
@@ -22,28 +22,29 @@ public class UpdateBook : Endpoint<UpdateBookRequest, UpdateBookResponse>
             return;
         }
 
-        book.Title = request.Title;
-        book.Author = request.Author;
-        book.Genre = request.Genre ?? string.Empty;
-        book.Description = request.Description ?? string.Empty;
-        book.Price = request.Price;
+        Map.UpdateEntity(request, book);
 
         await _db.SaveChangesAsync(ct);
 
-        var dto = new UpdateBookResponse
-        {
-            Id = book.Id,
-            Title = book.Title,
-            Author = book.Author,
-            Genre = book.Genre,
-            Description = book.Description,
-            Price = book.Price
-        };
+        var dto = Map.FromEntity(book);
 
         await Send.OkAsync(dto, cancellation: ct);
     }
 }
 
+#region Validators
+public class UpdateBookValidator : Validator<UpdateBookRequest>
+{
+    public UpdateBookValidator()
+    {
+        RuleFor(x => x.Title).NotEmpty();
+        RuleFor(x => x.Author).NotEmpty();
+        RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
+    }
+}
+#endregion
+
+#region Models and Mappers
 public class UpdateBookRequest
 {
     public int Id { get; set; }
@@ -56,12 +57,26 @@ public class UpdateBookRequest
 
 public class UpdateBookResponse : UpdateBookRequest { }
 
-public class UpdateBookValidator : Validator<UpdateBookRequest>
+public class UpdateBookMapper : Mapper<UpdateBookRequest, UpdateBookResponse, Book>
 {
-    public UpdateBookValidator()
+    public override Book UpdateEntity(UpdateBookRequest r, Book e)
     {
-        RuleFor(x => x.Title).NotEmpty();
-        RuleFor(x => x.Author).NotEmpty();
-        RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
+        e.Title = r.Title;
+        e.Author = r.Author;
+        e.Genre = r.Genre ?? string.Empty;
+        e.Description = r.Description ?? string.Empty;
+        e.Price = r.Price;
+        return e;
     }
+
+    public override UpdateBookResponse FromEntity(Book e) => new()
+    {
+        Id = e.Id,
+        Title = e.Title,
+        Author = e.Author,
+        Genre = e.Genre,
+        Description = e.Description,
+        Price = e.Price
+    };
 }
+#endregion

@@ -2,12 +2,14 @@ using BookStore.Models.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
+using Order = BookStore.Models.Data.Order;
+
 namespace BookStore.Endpoints.Orders;
 
 [HttpPost("api/orders/{OrderId:int}/books")]
 [AllowAnonymous]
 public class AddBookToOrder
-    : Endpoint<AddBookToOrder.AddBookRequest, AddBookToOrder.OrderDto>
+    : Endpoint<AddBookToOrder.AddBookRequest, AddBookToOrder.OrderDto, AddBookToOrder.OrderMapper>
 {
     private readonly AppDbContext _db;
 
@@ -19,6 +21,7 @@ public class AddBookToOrder
 
         var order = await _db.Orders
             .Include(o => o.Items)
+                .ThenInclude(i => i.Book)
             .FirstOrDefaultAsync(o => o.Id == request.OrderId, ct);
 
         if (order is null)
@@ -45,6 +48,7 @@ public class AddBookToOrder
             {
                 OrderId = order.Id,
                 BookId = book.Id,
+                Book = book,
                 Quantity = quantity,
                 UnitPrice = book.Price
             });
@@ -54,20 +58,7 @@ public class AddBookToOrder
 
         await _db.SaveChangesAsync(ct);
 
-        var titles = await _db.Books
-            .Where(b => order.Items.Select(i => i.BookId).Contains(b.Id))
-            .ToDictionaryAsync(b => b.Id, b => b.Title, ct);
-
-        var dto = new OrderDto(
-            order.Id,
-            order.UserEmail,
-            order.TotalPrice,
-            order.Items.Select(i => new OrderItemDto(
-                i.BookId,
-                titles[i.BookId],
-                i.Quantity,
-                i.UnitPrice,
-                i.UnitPrice * i.Quantity)).ToList());
+        var dto = Map.FromEntity(order);
 
         await Send.OkAsync(dto, cancellation: ct);
     }
@@ -86,4 +77,18 @@ public class AddBookToOrder
         int Quantity,
         decimal UnitPrice,
         decimal LineTotal);
+
+    public class OrderMapper : Mapper<AddBookRequest, OrderDto, Order>
+    {
+        public override OrderDto FromEntity(Order e) => new(
+            e.Id,
+            e.UserEmail,
+            e.TotalPrice,
+            e.Items.Select(i => new OrderItemDto(
+                i.BookId,
+                i.Book!.Title,
+                i.Quantity,
+                i.UnitPrice,
+                i.LineTotal)).ToList());
+    }
 }

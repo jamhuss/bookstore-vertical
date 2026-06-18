@@ -4,8 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace BookStore.Endpoints.Orders;
 
-[HttpGet("api/orders")]
 [AllowAnonymous]
+[HttpGet("api/orders")]
 public class GetAllOrders
     : Endpoint<ListRequest, PagedResult<GetAllOrdersResponse>>
 {
