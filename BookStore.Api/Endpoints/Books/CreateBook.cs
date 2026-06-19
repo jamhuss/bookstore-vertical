@@ -21,15 +21,15 @@ public class CreateBook
         var book = Map.ToEntity(request);
 
         _db.Books.Add(book);
-        
+
         await _db.SaveChangesAsync(ct);
 
         var dto = Map.FromEntity(book);
 
-       await Send.OkAsync(dto, cancellation: ct);
+        await Send.OkAsync(dto, cancellation: ct);
     }
 
-    
+
 }
 
 #region Validators

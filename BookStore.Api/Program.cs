@@ -53,6 +53,5 @@ else
 
 app.UseCors(CorsPolicy);
 
-app.UseAuthorization();
 
 app.Run();
