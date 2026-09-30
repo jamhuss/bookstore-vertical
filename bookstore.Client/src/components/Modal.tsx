@@ -2,16 +2,11 @@ import type { ReactNode } from 'react';
 
 interface ModalProps {
     title: string;
-    open: boolean;
     onClose: () => void;
     children: ReactNode;
 }
 
-export function Modal({ title, open, onClose, children }: ModalProps) {
-    if (!open) {
-        return null;
-    }
-
+export function Modal({ title, onClose, children }: ModalProps) {
     return (
         <div className="modal-backdrop" onClick={onClose}>
             <div

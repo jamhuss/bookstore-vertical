@@ -29,7 +29,28 @@ export function OrdersPage() {
     }
 
     useEffect(() => {
-        load();
+        let cancelled = false;
+        (async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const result = await ordersApi.list(page, pageSize);
+                if (!cancelled) {
+                    setData(result);
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    setError(getApiErrorMessage(e));
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
     }, [page]);
 
     useEffect(() => {
@@ -163,13 +184,14 @@ export function OrdersPage() {
                 </>
             )}
 
-            <OrderModal
-                open={modalOpen}
-                order={editingOrder}
-                books={books}
-                onClose={() => setModalOpen(false)}
-                onSaved={handleSaved}
-            />
+            {modalOpen && (
+                <OrderModal
+                    order={editingOrder}
+                    books={books}
+                    onClose={() => setModalOpen(false)}
+                    onSaved={handleSaved}
+                />
+            )}
         </div>
     );
 }

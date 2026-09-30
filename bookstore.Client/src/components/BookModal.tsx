@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { booksApi, getApiErrorMessage } from '../api';
 import type { Book, BookInput } from '../types';
 import { Modal } from './Modal';
@@ -12,35 +12,27 @@ const emptyForm: BookInput = {
 };
 
 interface BookModalProps {
-    open: boolean;
     book: Book | null;
     onClose: () => void;
     onSaved: () => void;
 }
 
+function getFormState(book: Book | null): BookInput {
+    return book
+        ? {
+              title: book.title,
+              author: book.author,
+              genre: book.genre,
+              description: book.description,
+              price: book.price,
+          }
+        : emptyForm;
+}
 
-export function BookModal({ open, book, onClose, onSaved }: BookModalProps) {
-    const [form, setForm] = useState<BookInput>(emptyForm);
+export function BookModal({ book, onClose, onSaved }: BookModalProps) {
+    const [form, setForm] = useState<BookInput>(() => getFormState(book));
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-        setForm(
-            book
-                ? {
-                      title: book.title,
-                      author: book.author,
-                      genre: book.genre,
-                      description: book.description,
-                      price: book.price,
-                  }
-                : emptyForm,
-        );
-        setError(null);
-    }, [open, book]);
 
     async function save(e: React.FormEvent) {
         e.preventDefault();
@@ -61,7 +53,7 @@ export function BookModal({ open, book, onClose, onSaved }: BookModalProps) {
     }
 
     return (
-        <Modal title={book ? 'Edit book' : 'New book'} open={open} onClose={onClose}>
+        <Modal title={book ? 'Edit book' : 'New book'} onClose={onClose}>
             <form onSubmit={save} className="form">
                 <label>
                     Title

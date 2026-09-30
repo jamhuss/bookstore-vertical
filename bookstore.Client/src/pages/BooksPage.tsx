@@ -26,9 +26,33 @@ export function BooksPage() {
         }
     }
 
-    useEffect(() => {
-        load();
-    }, [page]);
+   useEffect(() => {
+     let cancelled = false;
+
+     async function fetchBooks() {
+       try {
+         const result = await booksApi.list(page, pageSize);
+         if (!cancelled) {
+           setData(result);
+           setError(null);
+         }
+       } catch (e) {
+         if (!cancelled) {
+           setError(getApiErrorMessage(e));
+         }
+       } finally {
+         if (!cancelled) {
+           setLoading(false);
+         }
+       }
+     }
+
+     fetchBooks();
+
+     return () => {
+       cancelled = true;
+     };
+   }, [page, pageSize]);
 
     function openCreate() {
         setEditingBook(null);
@@ -140,12 +164,13 @@ export function BooksPage() {
                 </>
             )}
 
-            <BookModal
-                open={modalOpen}
-                book={editingBook}
-                onClose={() => setModalOpen(false)}
-                onSaved={handleSaved}
-            />
+            {modalOpen && (
+                <BookModal
+                    book={editingBook}
+                    onClose={() => setModalOpen(false)}
+                    onSaved={handleSaved}
+                />
+            )}
         </div>
     );
 }

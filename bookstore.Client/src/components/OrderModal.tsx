@@ -1,44 +1,32 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import { getApiErrorMessage, ordersApi } from '../api';
 import type { Book, Order, OrderInput, OrderItemInput } from '../types';
 import { Modal } from './Modal';
 
 interface OrderModalProps {
-    open: boolean;
     order: Order | null;
     books: Book[];
     onClose: () => void;
     onSaved: () => void;
 }
 
-export function OrderModal({ open, order, books, onClose, onSaved }: OrderModalProps) {
-    const [email, setEmail] = useState('');
-    const [items, setItems] = useState<OrderItemInput[]>([]);
+export function OrderModal({ order, books, onClose, onSaved }: OrderModalProps) {
+    const [email, setEmail] = useState(() => order?.userEmail ?? '');
+    const [items, setItems] = useState<OrderItemInput[]>(() =>
+        order
+            ? order.items.map((i) => ({ bookId: i.bookId, quantity: i.quantity }))
+            : books.length
+              ? [{ bookId: books[0].id, quantity: 1 }]
+              : [],
+    );
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-
-    useEffect(() => {
-        if (!open) {
-            return;
-        }
-        if (order) {
-            setEmail(order.userEmail);
-            setItems(order.items.map((i) => ({ bookId: i.bookId, quantity: i.quantity })));
-        } else {
-            setEmail('');
-            setItems(books.length ? [{ bookId: books[0].id, quantity: 1 }] : []);
-        }
-        setError(null);
-    }, [open, order, books]);
 
     function priceOf(bookId: number) {
         return books.find((b) => b.id === bookId)?.price ?? 0;
     }
 
-    const estimatedTotal = useMemo(
-        () => items.reduce((sum, i) => sum + priceOf(i.bookId) * i.quantity, 0),
-        [items, books],
-    );
+    const estimatedTotal = items.reduce((sum, i) => sum + priceOf(i.bookId) * i.quantity, 0);
 
     function addRow() {
         if (!books.length) return;
@@ -73,11 +61,7 @@ export function OrderModal({ open, order, books, onClose, onSaved }: OrderModalP
     }
 
     return (
-        <Modal
-            title={order ? `Edit order #${order.id}` : 'New order'}
-            open={open}
-            onClose={onClose}
-        >
+        <Modal title={order ? `Edit order #${order.id}` : 'New order'} onClose={onClose}>
             <form onSubmit={save} className="form">
                 <label>
                     Customer email

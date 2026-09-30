@@ -55,3 +55,7 @@ app.UseCors(CorsPolicy);
 
 
 app.Run();
+
+// Exposes the implicit top-level Program class to the integration test project
+// so WebApplicationFactory<Program> can bootstrap the real host.
+public partial class Program { }
