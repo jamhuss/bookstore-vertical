@@ -1,64 +1,36 @@
-import { useEffect, useState } from 'react';
-import { booksApi, getApiErrorMessage, ordersApi } from '../api';
-import type { Book, Order, PagedResult } from '../types';
+import { useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getApiErrorMessage, ordersApi } from '../api';
+import type { Order } from '../types';
 import { OrderModal } from '../components/OrderModal';
 
-export function OrdersPage() {
-    const [data, setData] = useState<PagedResult<Order> | null>(null);
-    const [page, setPage] = useState(1);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+const pageSize = 5;
 
-    const [books, setBooks] = useState<Book[]>([]);
+export function OrdersPage() {
+    const queryClient = useQueryClient();
+    const [page, setPage] = useState(1);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
-    const pageSize = 5;
+    const { data, isPending, error } = useQuery({
+        queryKey: ['orders', page],
+        queryFn: () => ordersApi.list(page, pageSize),
+        placeholderData: keepPreviousData,
+    });
 
-    async function load() {
-        setLoading(true);
-        setError(null);
-        try {
-            setData(await ordersApi.list(page, pageSize));
-        } catch (e) {
-            setError(getApiErrorMessage(e));
-        } finally {
-            setLoading(false);
-        }
-    }
 
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            setLoading(true);
-            setError(null);
-            try {
-                const result = await ordersApi.list(page, pageSize);
-                if (!cancelled) {
-                    setData(result);
-                }
-            } catch (e) {
-                if (!cancelled) {
-                    setError(getApiErrorMessage(e));
-                }
-            } finally {
-                if (!cancelled) {
-                    setLoading(false);
-                }
+
+    const deleteMutation = useMutation({
+        mutationFn: (order: Order) => ordersApi.remove(order.id),
+        onSuccess: () => {
+            if (data && data.items.length === 1 && page > 1) {
+                setPage(page - 1);
+            } else {
+                queryClient.invalidateQueries({ queryKey: ['orders'] });
             }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [page]);
-
-    useEffect(() => {
-        booksApi
-            .list(1, 100)
-            .then((r) => setBooks(r.items))
-            .catch((e) => setError(getApiErrorMessage(e)));
-    }, []);
+        },
+    });
 
     function openCreate() {
         setEditingOrder(null);
@@ -70,26 +42,23 @@ export function OrdersPage() {
         setModalOpen(true);
     }
 
-    async function handleSaved() {
+    function handleSaved() {
         setModalOpen(false);
-        await load();
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
     }
 
-    async function remove(order: Order) {
+    function remove(order: Order) {
         if (!confirm(`Delete order #${order.id}?`)) {
             return;
         }
-        try {
-            await ordersApi.remove(order.id);
-            if (data && data.items.length === 1 && page > 1) {
-                setPage(page - 1);
-            } else {
-                await load();
-            }
-        } catch (e) {
-            setError(getApiErrorMessage(e));
-        }
+        deleteMutation.mutate(order);
     }
+
+    const errorMessage = error
+        ? getApiErrorMessage(error)
+        : deleteMutation.error
+          ? getApiErrorMessage(deleteMutation.error)
+          : null;
 
     return (
         <div>
@@ -99,14 +68,13 @@ export function OrdersPage() {
                     type="button"
                     className="primary"
                     onClick={openCreate}
-                    disabled={!books.length}
                 >
                     + New order
                 </button>
             </div>
 
-            {error && <p className="error">{error}</p>}
-            {loading && <p>Loading…</p>}
+            {errorMessage && <p className="error">{errorMessage}</p>}
+            {isPending && <p>Loading…</p>}
 
             {data && (
                 <>
@@ -187,7 +155,6 @@ export function OrdersPage() {
             {modalOpen && (
                 <OrderModal
                     order={editingOrder}
-                    books={books}
                     onClose={() => setModalOpen(false)}
                     onSaved={handleSaved}
                 />

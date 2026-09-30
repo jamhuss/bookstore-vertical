@@ -1,58 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { booksApi, getApiErrorMessage } from '../api';
-import type { Book, PagedResult } from '../types';
+import type { Book } from '../types';
 import { BookModal } from '../components/BookModal';
 
+const pageSize = 5;
+
 export function BooksPage() {
-    const [data, setData] = useState<PagedResult<Book> | null>(null);
+    const queryClient = useQueryClient();
     const [page, setPage] = useState(1);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
 
     const [modalOpen, setModalOpen] = useState(false);
     const [editingBook, setEditingBook] = useState<Book | null>(null);
 
-    const pageSize = 5;
+    const { data, isPending, error } = useQuery({
+        queryKey: ['books', page],
+        queryFn: () => booksApi.list(page, pageSize),
+        placeholderData: keepPreviousData,
+    });
 
-    async function load() {
-        setLoading(true);
-        setError(null);
-        try {
-            setData(await booksApi.list(page, pageSize));
-        } catch (e) {
-            setError(getApiErrorMessage(e));
-        } finally {
-            setLoading(false);
-        }
-    }
-
-   useEffect(() => {
-     let cancelled = false;
-
-     async function fetchBooks() {
-       try {
-         const result = await booksApi.list(page, pageSize);
-         if (!cancelled) {
-           setData(result);
-           setError(null);
-         }
-       } catch (e) {
-         if (!cancelled) {
-           setError(getApiErrorMessage(e));
-         }
-       } finally {
-         if (!cancelled) {
-           setLoading(false);
-         }
-       }
-     }
-
-     fetchBooks();
-
-     return () => {
-       cancelled = true;
-     };
-   }, [page, pageSize]);
+    const deleteMutation = useMutation({
+        mutationFn: (book: Book) => booksApi.remove(book.id),
+        onSuccess: () => {
+            if (data && data.items.length === 1 && page > 1) {
+                setPage(page - 1);
+            } else {
+                queryClient.invalidateQueries({ queryKey: ['books'] });
+            }
+        },
+    });
 
     function openCreate() {
         setEditingBook(null);
@@ -64,26 +40,23 @@ export function BooksPage() {
         setModalOpen(true);
     }
 
-    async function handleSaved() {
+    function handleSaved() {
         setModalOpen(false);
-        await load();
+        queryClient.invalidateQueries({ queryKey: ['books'] });
     }
 
-    async function remove(book: Book) {
+    function remove(book: Book) {
         if (!confirm(`Delete "${book.title}"?`)) {
             return;
         }
-        try {
-            await booksApi.remove(book.id);
-            if (data && data.items.length === 1 && page > 1) {
-                setPage(page - 1);
-            } else {
-                await load();
-            }
-        } catch (e) {
-            setError(getApiErrorMessage(e));
-        }
+        deleteMutation.mutate(book);
     }
+
+    const errorMessage = error
+        ? getApiErrorMessage(error)
+        : deleteMutation.error
+          ? getApiErrorMessage(deleteMutation.error)
+          : null;
 
     return (
         <div>
@@ -94,8 +67,8 @@ export function BooksPage() {
                 </button>
             </div>
 
-            {error && <p className="error">{error}</p>}
-            {loading && <p>Loading…</p>}
+            {errorMessage && <p className="error">{errorMessage}</p>}
+            {isPending && <p>Loading…</p>}
 
             {data && (
                 <>

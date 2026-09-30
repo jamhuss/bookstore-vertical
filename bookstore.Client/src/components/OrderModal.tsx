@@ -1,16 +1,22 @@
 import { useState } from 'react';
-import { getApiErrorMessage, ordersApi } from '../api';
-import type { Book, Order, OrderInput, OrderItemInput } from '../types';
+import { useQuery } from '@tanstack/react-query';
+import { booksApi, getApiErrorMessage, ordersApi } from '../api';
+import type { Order, OrderInput, OrderItemInput } from '../types';
 import { Modal } from './Modal';
 
 interface OrderModalProps {
     order: Order | null;
-    books: Book[];
     onClose: () => void;
     onSaved: () => void;
 }
 
-export function OrderModal({ order, books, onClose, onSaved }: OrderModalProps) {
+export function OrderModal({ order, onClose, onSaved }: OrderModalProps) {
+    const { data: booksData } = useQuery({
+        queryKey: ['books', 'all'],
+        queryFn: () => booksApi.list(1, 100),
+    });
+    const books = booksData?.items ?? [];
+
     const [email, setEmail] = useState(() => order?.userEmail ?? '');
     const [items, setItems] = useState<OrderItemInput[]>(() =>
         order
