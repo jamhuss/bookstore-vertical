@@ -7,6 +7,7 @@ Ett demoprojekt som illustrerar **vertical-slice / single-file-arkitektur** med 
 - **Backend:** .NET 10 Web API + EF Core In-Memory (seedad vid start → klona och kör direkt, ingen DB-installation).
 - **Domän:** BookStore (Books + Orders).
 - **Frontend:** React-klient med list- och CRUD-modaler.
+- **Tester:** Integrationstester (xUnit + `WebApplicationFactory`) som kör mot en isolerad in-memory-databas per testkörning.
 
 ## 2. Låsta beslut
 
@@ -22,6 +23,7 @@ Ett demoprojekt som illustrerar **vertical-slice / single-file-arkitektur** med 
 | Endpoint-stil | Ett FastEndpoints-endpoint = en fil; Request + Response DTO:er i samma fil |
 | Validering | FastEndpoints `Validator<T>` (FluentValidation), auto-upptäcks och körs före handlern |
 | Frontend-stack | Vite + React + TypeScript + axios, modal-baserad CRUD |
+| Teststack | xUnit + FluentAssertions + `Microsoft.AspNetCore.Mvc.Testing` (`WebApplicationFactory<Program>`), EF Core In-Memory per test |
 
 ## 3. Datamodell
 
@@ -89,12 +91,15 @@ sequenceDiagram
 src/BookStore.Api/
   Endpoints/Books/   GetAllBooks, GetBookById, CreateBook, UpdateBook, DeleteBook   (en fil var)
   Endpoints/Orders/  GetAllOrders, GetOrderById, CreateOrder, UpdateOrder, DeleteOrder
-  Endpoints/Orders/  AddBookToOrder.cs   (komposit bindning: orderId från route + bookId/quantity från body)
   Helpers/Paging.cs          (ListRequest{Page,PageSize}, PagedResult<T>, ToPagedResultAsync)
   Helpers/globalusings.cs    (global using FastEndpoints, FluentValidation)
   Models/Data/               AppDbContext, Book, Order, OrderItem, DbSeeder
   Program.cs                 (DI, EF InMemory, CORS, FastEndpoints + Swagger, kör seed)
 client/  (Vite React TS)      Books-sida + Orders-sida, var sin lista + CRUD-modal, axios api-klient
+BookStore.IntegrationTests/  (xUnit)
+  Infrastructure/BookStoreWebApplicationFactory.cs  (delad test-host, byter EF-registrering mot isolerad in-memory-DB)
+  Endpoints/Books/CreateBookTests.cs                (slice-tester som speglar endpoint-strukturen)
+  GlobalUsings.cs                                   (Xunit, FluentAssertions, EF Core)
 .http-fil + kort README som speglar approachen
 ```
 
@@ -111,13 +116,14 @@ client/  (Vite React TS)      Books-sida + Orders-sida, var sin lista + CRUD-mod
 ### Fas 2 – Slices
 
 6. Books-slices (5 filer): egna Request/Response-typer i samma fil. GetAll returnerar `PagedResult<BookDto>`. *(beror på 2–4)*
-7. Orders-slices (5 filer) + `AddBookToOrder` med komposit route + body-bindning. Create/Update slår upp bokpriser, fryser UnitPrice, räknar TotalPrice. *(beror på 2–5)*
+7. Orders-slices (5 filer). Create/Update slår upp bokpriser, fryser UnitPrice, räknar TotalPrice. *(beror på 2–5)*
 8. `Program.cs`: registrera DbContext (InMemory), CORS för React, `AddFastEndpoints()` + Swagger, kör seed vid uppstart.
 
 ### Fas 3 – Klient & test
 
 9. React-klient: Vite + TS, axios api-klient, Books-sida (lista + CRUD-modal), Orders-sida (lista + CRUD-modal med antal per rad). *(beror på API-kontraktet 6–8)*
 10. `.http`-fil för manuell test + kort README.
+11. Integrationstester (`BookStore.IntegrationTests`): `WebApplicationFactory<Program>` som byter EF-registreringen mot en isolerad in-memory-DB per körning, slice-tester per endpoint (börjar med `CreateBook`). *(beror på 6–8)*
 
 ## 8. Återanvändbara mönster
 
@@ -125,32 +131,14 @@ client/  (Vite React TS)      Books-sida + Orders-sida, var sin lista + CRUD-mod
 - **`Helpers/globalusings.cs`** – globala usings (`FastEndpoints`, `FluentValidation`) så varje slice slipper upprepa dem.
 - Varje slice ärver `Endpoint<TRequest, TResponse>` (eller `Endpoint<TRequest>`), injicerar `AppDbContext`, har route-attribut (`[Http...]`) på klassen och svarar via `Send.*Async`.
 
-## 9. Komposit bindning
-
-FastEndpoints binder ett **enda** request-objekt från flera källor samtidigt. I `AddBookToOrder`
-kommer `OrderId` från route-mallen medan `BookId` och `Quantity` binds från request-body – ingen
-egen bindnings-attribut behövs.
-
-```csharp
-[HttpPost("api/orders/{OrderId:int}/books")]
-[AllowAnonymous]
-public class AddBookToOrder : Endpoint<AddBookToOrder.AddBookRequest, AddBookToOrder.OrderDto>
-{
-    public override async Task HandleAsync(AddBookRequest request, CancellationToken ct = default) { /* ... */ }
-
-    // OrderId från path, BookId + Quantity från body:
-    public record AddBookRequest(int OrderId, int BookId, int Quantity);
-}
-```
-
-## 10. Verifiering
+## 9. Verifiering
 
 1. `dotnet build` + `dotnet run` → Swagger UI svarar, seed-data syns i `GET /api/books` och `GET /api/orders`.
 2. `.http`: skapa bok → `POST /api/orders` med 2 items → bekräfta att TotalPrice = Σ(UnitPrice × Quantity).
-3. `AddBookToOrder` via `POST /api/orders/{id}/books` → bekräfta att den kompositta route + body-bindningen fungerar.
-4. `npm run dev` i `client/` → skapa/redigera/radera böcker och ordrar via modaler; paginering syns i listan.
+3. `npm run dev` i `client/` → skapa/redigera/radera böcker och ordrar via modaler; paginering syns i listan.
+4. `dotnet test` → integrationstesterna kör mot en isolerad in-memory-DB och verifierar endpoint-beteendet (t.ex. `CreateBook` returnerar `200 OK` vid giltig request och `400 BadRequest` när titel saknas).
 
-## 11. Scope-gränser
+## 10. Scope-gränser
 
-- **Ingår:** Books CRUD, Orders CRUD, AddBookToOrder, paginering, seed, Swagger, React-klient.
-- **Utelämnas (tills vidare):** auth/identity, persistent DB, API-versionering, automatiska tester (manuell `.http` + UI).
+- **Ingår:** Books CRUD, Orders CRUD, paginering, seed, Swagger, React-klient, integrationstester (xUnit).
+- **Utelämnas (tills vidare):** auth/identity, persistent DB, API-versionering.
