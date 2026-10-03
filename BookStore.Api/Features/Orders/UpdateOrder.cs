@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Order = BookStore.Models.Data.Order;
 
-namespace BookStore.Endpoints.Orders;
+namespace BookStore.Features.Orders;
 
 [HttpPut("api/orders/{id:int}")]
 [AllowAnonymous]

@@ -1,7 +1,7 @@
 using BookStore.Models.Data;
 using Microsoft.AspNetCore.Authorization;
 
-namespace BookStore.Endpoints.Books;
+namespace BookStore.Features.Books;
 
 [AllowAnonymous]
 [HttpPost("api/books")]

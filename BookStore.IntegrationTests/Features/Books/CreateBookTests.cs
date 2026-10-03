@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
-using BookStore.Endpoints.Books;
+using BookStore.Features.Books;
 using BookStore.IntegrationTests.Infrastructure;
 
-namespace BookStore.IntegrationTests.Endpoints.Books;
+namespace BookStore.IntegrationTests.Features.Books;
 
 public class CreateBookTests : IClassFixture<BookStoreWebApplicationFactory>
 {

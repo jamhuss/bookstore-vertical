@@ -2,7 +2,7 @@ using BookStore.Helpers;
 using BookStore.Models.Data;
 using Microsoft.AspNetCore.Authorization;
 
-namespace BookStore.Endpoints.Books;
+namespace BookStore.Features.Books;
 
 [HttpGet("api/books")]
 [AllowAnonymous]

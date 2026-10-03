@@ -2,7 +2,7 @@ using BookStore.Models.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 
-namespace BookStore.Endpoints.Books;
+namespace BookStore.Features.Books;
 
 [HttpDelete("api/books/{id:int}")]
 [AllowAnonymous]
